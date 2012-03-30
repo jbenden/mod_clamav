@@ -72,6 +72,8 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
 	memset(buff, '\0', sizeof(buff));
 	if (fgets(buff, sizeof(buff)-1, fd)) {
 		if (strstr(buff, "FOUND\n")) {
+                        const char *proto;
+
 			++infected;
 		
 			/* Advance past the <id> portion of the response,
@@ -94,9 +96,21 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
 						MOD_CLAMAV_VERSION ": notice: unlink() failed (%d): %s", 
 						errno, strerror(errno));
 			}
-			
-			/* Inform the client the file contained a virus */
-			pr_response_add_err(R_550, "Virus Detected and Removed: %s", pt);
+
+                        /* Generate a custom event for any listeners (e.g.
+                         * mod_ban) which might be listening.  Pass in the
+                         * string containing the virus information.
+                         */
+                        pr_event_generate("mod_clamav.virus-found", pt);
+
+			/* Inform the client the file contained a virus (only
+                         * for FTP/FTPS connections).
+                         */
+                        proto = pr_session_get_protocol(0);
+                        if (strncmp(proto, "ftp", 4) == 0 ||
+                            strncmp(proto, "ftps", 5) == 0) {
+                          pr_response_add_err(R_550, "Virus Detected and Removed: %s", pt);
+                        }
 			
 			/* Log the fact */
 			pr_log_pri(PR_LOG_ERR, 

@@ -58,10 +58,7 @@ sub list_tests {
     }
   }
 
-#  return testsuite_get_runnable_tests($TESTS);
-  return qw(
-    clamav_scp_upload_eicar_fails
-  );
+  return testsuite_get_runnable_tests($TESTS);
 }
 
 sub set_up {
@@ -379,7 +376,7 @@ sub clamav_scp_upload_eicar_fails {
     die($ex);
   }
 
-#  unlink($log_file);
+  unlink($log_file);
 }
 
 1;
