@@ -665,7 +665,7 @@ static int clamav_sess_init(void) {
 	
 	pr_event_register(&clamav_module, "core.exit", clamav_shutdown, NULL);
 
-	fs = pr_register_fs(main_server->pool, "clamav", "/");
+	fs = pr_register_fs(session.pool, "clamav", "/");
 	if (fs) {
 		fs->close = clamav_fsio_close;
 	}
