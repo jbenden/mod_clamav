@@ -1,0 +1,129 @@
+<html>
+<head>
+<title>ProFTPD module mod_clamav</title>
+</head>
+
+<body bgcolor=white>
+
+<hr>
+<center>
+<h2><b>ProFTPD module <code>mod_clamav</code></b></h2>
+</center>
+<hr><br>
+
+The <code>mod_clamav</code> module is designed to scan files
+immediately upon upload through FTP for viruses.  If the file is found to be infected, it is
+immediately removed from the system, and a message is logged.  If the file
+is found to be free of viruses, the FTP client is sent an additional message
+stating the file was scanned by X patterns.
+<br><br>
+This module is best employed in scenarios where many users are using a
+system that is maintained by another entity.  In this scenario, the administrator
+of the machine is helping to ensure that no viruses are spread to other users.
+
+<p>
+This module was compiled and tested against ProFTPD 1.2.10.  Installation
+instructions are discussed <a href="#Installation">here</a>.
+
+<p>
+The most current version of <code>mod_clamav</code> can be found at:
+<pre>
+  <a href="http://www.UglyBoxIndustries.com/">http://www.UglyBoxIndustries.com/</a>
+</pre>
+
+<h2>Author</h2>
+<p>
+Please contact Joseph Benden &lt;joe <i>at</i> thrallingpenguin.com&gt; with any
+questions, concerns, or suggestions regarding this module.
+
+<h2>Directives</h2>
+<ul>
+  <li><a href="#ClamAV">ClamAV</a>
+  <li><a href="#ClamWarn">ClamWarn</a>
+</ul>
+
+<hr>
+<h2><a name="ClamWarn">ClamWarn</a></h2>
+<strong>Syntax:</strong>ClamWarn <em>boolean</em><br>
+<strong>Default:</strong> Off<br>
+<strong>Context:</strong> server config, &lt;VirtualHost&gt;, &lt;Global&gt;, &lt;Anonymous&gt;<br>
+<strong>Module:</strong> mod_clamav<br>
+<strong>Compatibility:</strong> 1.2.10
+
+<p>
+The <code>ClamWarn</code> directive will configure if the <code>mod_clamav</code>'s
+virus scanning results are displayed to the remote FTP client.  This is desirable if
+your FTP clients are having troubles with the returned results of <code>mod_clamav</code>.
+If no <code>ClamWarn</code> directive is configured, then the module will return no
+results.
+
+<hr>
+<h2><a name="ClamAV">ClamAV</a></h2>
+<strong>Syntax:</strong> ClamAV <em>boolean</em><br>
+<strong>Default:</strong> Off<br>
+<strong>Context:</strong> server config, &lt;VirtualHost&gt;, &lt;Global&gt;, &lt;Anonymous&gt;<br>
+<strong>Module:</strong> mod_clamav<br>
+<strong>Compatibility:</strong> 1.2.10
+
+<p>
+The <code>ClamAV</code> directive will configure if the <code>mod_clamav</code>'s 
+virus scanning and virus removal features are active. If no
+<code>ClamAV</code> directive is configured, then the module will
+do no virus scanning.
+
+<p>
+The source code contains hard-coded limits related to virus scanning, which may need to be tweaked for 
+your environment.  In the future, these values will be moved in to configuration directives.
+
+<p>
+<b>NOTE:</b> It is highly recommended to send a HUP signal to the parent ProFTPD process after executing
+<code>freshclam</code>.  This causes the parent process to read the newest AV updates, which automatically
+gives new child processes the latest updates.  If this isn't done, the child processes will always read the latest
+updates available upon their startup.  This will effect the performace of the FTP server, as each new connecting
+client must read the latest AV updates.
+
+<p>
+Example:
+<pre>
+  &lt;IfModule mod_clamav.c&gt;
+    # Enable virus scanning and removal
+    ClamAV on
+  &lt;/IfModule&gt;
+</pre>
+
+<p>
+See also:
+
+<p>
+<hr>
+<h2><a name="Installation">Installation</a></h2>
+To install <code>mod_clamav</code>, copy the <code>mod_clamav.c</code> file
+into <pre>
+  <i>proftpd-dir</i>/contrib/
+</pre>
+Unpack the latest proftpd-1.2.<i>x</i> source code, then follow the
+usual steps for using third-party modules in proftpd:
+<pre>
+  ./configure --with-modules=mod_clamav
+  make
+  make install
+</pre>
+
+<p>
+<hr><br>
+
+Author: <i>Joseph Benden, Sr.</i><br>
+Last Updated: <i>07/04/2005 3:57 PM</i><br>
+
+<br><hr>
+
+<font size=2><b><i>
+&copy; Copyright 2005 Thralling Penguin LLC.<br>
+ All Rights Reserved<br>
+</i></b></font>
+
+<hr><br>
+
+</body>
+</html>
+
