@@ -30,6 +30,15 @@
 #if !defined(MOD_CLAMAV_H)
 #define MOD_CLAMAV_H
 
+/**
+ * Function declarations
+ */
+int clamavd_result(int sockd, const char *abs_filename, const char *rel_filename);
+int clamavd_session_start(int sockd);
+int clamavd_session_stop(int sockd);
+int clamavd_connect_check(int sockd);
+int clamavd_scan(int sockd, const char *abs_filename, const char *rel_filename);
+int clamavd_connect(void);
 int clamav_scan(cmd_rec *cmd);
 
 #endif
