@@ -29,11 +29,12 @@
 #include "conf.h"
 #include "privs.h"
 #include <libgen.h>
+#include "mod_clamav.h"
 
 /**
  * Module version and declaration
  */
-#define MOD_CLAMAV_VERSION "mod_clamav/0.8"
+#define MOD_CLAMAV_VERSION "mod_clamav/0.9"
 module clamav_module;
 
 /**
@@ -42,17 +43,6 @@ module clamav_module;
 static int clamd_sockd = 0, is_remote = 0;
 static char *clamd_host = NULL;
 static int clamd_port = 0, clamd_minsize = 0, clamd_maxsize = -1;
-
-/**
- * Forward declarations
- */
-int clamavd_result(int sockd, const char *abs_filename, const char *rel_filename);
-int clamavd_session_start(int sockd);
-int clamavd_session_stop(int sockd);
-int clamavd_connect_check(int sockd);
-int clamavd_scan(int sockd, const char *abs_filename, const char *rel_filename);
-int clamavd_connect(void);
-int clamav_scan(cmd_rec *cmd);
 
 /**
  * Read the returned information from Clamavd.
@@ -217,7 +207,7 @@ int clamavd_connect(void) {
 	struct sockaddr_un server;
 	struct sockaddr_in server2;
 	struct hostent *he;
-	int sockd;
+	int sockd, *port, *minsize, *maxsize;
 	
 	/**
 	 * We will set the global socket to non-connected, just in-case.
@@ -226,6 +216,35 @@ int clamavd_connect(void) {
 	
 	memset((char*)&server, 0, sizeof(server));
 	memset((char*)&server2, 0, sizeof(server2));
+	
+	clamd_host = (char *) get_param_ptr(CURRENT_CONF, "ClamLocalSocket", TRUE);
+	if (!clamd_host) {
+		clamd_host = (char *) get_param_ptr(CURRENT_CONF, "ClamServer", TRUE);
+		if (!clamd_host) {
+			pr_log_pri(PR_LOG_INFO, 
+					MOD_CLAMAV_VERSION ": warning: No local socket or server was specified.");
+			return -1;
+		}
+		is_remote = 1;
+		if ((port = (int *) get_param_ptr(CURRENT_CONF, "ClamPort", TRUE)) <= 0)
+			clamd_port = 3310;
+		else
+			clamd_port = *port;
+		pr_log_debug(DEBUG4, 
+				MOD_CLAMAV_VERSION ": Connecting to remote Clamd host '%s' on port %d", clamd_host, clamd_port);
+	} else {
+		pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Connecting to local Clamd socket '%s'", clamd_host);
+	}
+	
+	if ((minsize = (int *) get_param_ptr(CURRENT_CONF, "ClamMinSize", TRUE)) <= 0)
+		clamd_minsize = 0;
+	else
+		clamd_minsize = *minsize;
+	
+	if ((maxsize = (int *) get_param_ptr(CURRENT_CONF, "ClamMaxSize", TRUE)) <= 0)
+		clamd_maxsize = -1;
+	else
+		clamd_maxsize = *maxsize;
 	
 	PRIVS_ROOT;	
 	
@@ -292,8 +311,10 @@ int clamav_scan(cmd_rec *cmd) {
 	char absolutepath[4096];
 	char *file, *rel_file;
 	struct stat st;
+	config_rec *c = NULL;
 	
-	if (clamd_sockd < 0)
+	c = find_config(CURRENT_CONF, CONF_PARAM, "ClamAV", FALSE);
+	if (!c || !*(int*)(c->argv[0]))
 		return 0;
 	
 	/**
@@ -486,12 +507,11 @@ MODRET set_clamavd_maxsize(cmd_rec *cmd) {
  * End FTP Session
  */
 static void clamav_shutdown(const void *event_data, void *user_data) {
-	pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": debug: disconnected from Clamd");
-	
 	if (clamd_sockd != -1) {
 		clamavd_session_stop(clamd_sockd);
 		close(clamd_sockd);
 		clamd_sockd = -1;
+		pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": debug: disconnected from Clamd");
 	}
 }
 
@@ -499,54 +519,11 @@ static void clamav_shutdown(const void *event_data, void *user_data) {
  * Start FTP Session
  */
 static int clamav_sess_init(void) {
-	int *port = NULL, *minsize = NULL, *maxsize = NULL;
-	config_rec *c = NULL;
 	
-	is_remote = 0;
-	clamd_sockd = -1;
-	
-	c = find_config(CURRENT_CONF, CONF_PARAM, "ClamAV", TRUE);
-	if (!c || !*(int*)(c->argv[0]))
-		return 0;
-		
-	clamd_host = (char *) get_param_ptr(main_server->conf, "ClamLocalSocket", TRUE);
-	if (!clamd_host) {
-		clamd_host = (char *) get_param_ptr(main_server->conf, "ClamServer", TRUE);
-		if (!clamd_host) {
-			pr_log_pri(PR_LOG_INFO, 
-					MOD_CLAMAV_VERSION ": warning: No local socket or server was specified.");
-			return 0;
-		}
-		is_remote = 1;
-		if ((port = (int *) get_param_ptr(main_server->conf, "ClamPort", TRUE)) <= 0)
-			clamd_port = 3310;
-		else
-			clamd_port = *port;
-		pr_log_debug(DEBUG4, 
-				MOD_CLAMAV_VERSION ": Connecting to remote Clamd host '%s' on port %d", clamd_host, clamd_port);
-	} else {
-		pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Connecting to local Clamd socket '%s'", clamd_host);
-	}
-	
-	if ((clamd_sockd = clamavd_connect()) < 0) {
-		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": Cannot connect to ClamAVd.");
-		return 0;
-	}
-	
-	clamavd_session_start(clamd_sockd);
+	is_remote = 0; clamd_sockd = -1;
 	
 	pr_event_register(&clamav_module, "core.exit", clamav_shutdown, NULL);
-	
-	if ((minsize = (int *) get_param_ptr(main_server->conf, "ClamMinSize", TRUE)) <= 0)
-		clamd_minsize = 0;
-	else
-		clamd_minsize = *minsize;
-	
-	if ((maxsize = (int *) get_param_ptr(main_server->conf, "ClamMaxSize", TRUE)) <= 0)
-		clamd_maxsize = -1;
-	else
-		clamd_maxsize = *maxsize;
-	
+		
 	return 0;
 }
 
