@@ -21,12 +21,12 @@
  * source code for ClamAV in the source distribution.
  *
  * ClamAV is available at http://www.clamav.net/
- * 
+ *
  * Thanks to TJ Saunders for his helpful comments and suggestions!
  *
  * DO NOT EDIT THE LINE BELOW
  */
- 
+
 #if !defined(MOD_CLAMAV_H)
 #define MOD_CLAMAV_H
 
@@ -34,8 +34,6 @@
  * Function declarations
  */
 int clamavd_result(int sockd, const char *abs_filename, const char *rel_filename);
-int clamavd_session_start(int sockd);
-int clamavd_session_stop(int sockd);
 int clamavd_connect_check(int sockd);
 int clamavd_scan(int sockd, const char *abs_filename, const char *rel_filename);
 int clamavd_connect(void);
