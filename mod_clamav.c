@@ -1,6 +1,6 @@
 /*
  * mod_clamav - ClamAV virus scanning module for ProFTPD
- * Copyright (c) 2005, Joseph Benden <joe@thrallingpenguin.com>
+ * Copyright (c) 2005-2006, Joseph Benden <joe@thrallingpenguin.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,73 +27,157 @@
  * Thanks to TJ Saunders for his helpful comments and suggestions!
  *
  * DO NOT EDIT THE LINE BELOW
- * $Libraries: -lclamav $
  */
 #include "conf.h"
+#include "privs.h"
 #include "clamav.h"
 
-#define MOD_CLAMAV_VERSION "mod_clamav/0.3"
-
-static void clamav_restart_ev(const void *event_data, void *user_data);
-static int reload_av_database(void);
+#define MOD_CLAMAV_VERSION "mod_clamav/0.5"
 module clamav_module;
+static int clamd_sockd = 0;
+int clamavd_session_start(int sockd);
 
-/* This works through the fork process on Linux. YMMV. If it doesn't work, ie.
- * seg. faults. A simple solution is to move the clamav database loader into
- * the session init handler.  This will definately slow things down, though.
+/**
+ * Read the returned information from Clamavd.
  */
-struct cl_node		*clamav_root = NULL;
-struct cl_stat		dbstat;
-static int     		patcount = 0;
+int clamavd_result(int sockd, int warnClient, const char *filename) {
+	int infected = 0, waserror = 0, ret;
+	char buff[4096], *pt;
+	FILE *fd = 0;
+	
+	if((fd=fdopen(dup(sockd), "r")) == NULL) {
+		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Cant open descriptor for reading: %d", errno);
+		return -1;
+	}
+	
+	if(fgets(buff, sizeof(buff), fd)) {
+		if(strstr(buff, "FOUND\n")) {
+			++infected;
+			pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": warning: %s", buff);
+			/* Delete the upload */
+			if(warnClient)
+				pr_response_add_err(R_DUP,"%s", buff);
+			pt = strrchr(buff, ':');
+			*pt = 0;
+			if((ret=pr_fsio_unlink(filename))!=0) {
+				pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": notice: unlink() failed: %d", errno);
+			}
+		} else if(strstr(buff, "ERROR\n")) {
+			pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: %s", buff);
+			waserror = 1;
+		}
+	}
+	fclose(fd);
+	return infected ? infected : (waserror ? -1 : 0);
+}
+
+/**
+ * Start a session with Clamavd.
+ */
+int clamavd_session_start(int sockd) {
+	if(write(sockd, "SESSION\n", 8) <= 0) {
+		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Clamd didn't accept the session request.");
+		return -1;
+	}
+	return 0;
+}
+
+/**
+ * End session.
+ */
+int clamavd_session_stop(int sockd) {
+	if(write(sockd, "END\n", 4) <= 0) {
+		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Clamd didn't accept the session end request.");
+		return -1;
+	}
+	return 0;
+}
+ 
+/**
+ * Request Clamavd to perform a scan.
+ */
+int clamavd_scan(int sockd, const char *fullpath, int warnClient, const char *filename) {
+	char *scancmd = NULL;
+	
+	scancmd = calloc(strlen(fullpath) + 20, sizeof(char));
+	sprintf(scancmd, "SCAN %s\n", fullpath);
+	
+	if(write(sockd, scancmd, strlen(scancmd)) <= 0) {
+		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Cant write to the ClamAVd socket: %d", errno);
+		free(scancmd);
+		return -1;
+	}
+	
+	free(scancmd);
+	return clamavd_result(sockd, warnClient, filename);	
+} 
+
+/**
+ * Connect a socket to ClamAVd.
+ */
+int clamavd_connect(char *clamhost) {
+	struct sockaddr_un server;
+	int sockd;
+
+	PRIVS_ROOT;	
+	memset((char*)&server, 0, sizeof(server));
+	
+	/* Local Socket */
+	server.sun_family = AF_UNIX;
+	strncpy(server.sun_path, clamhost, sizeof(server.sun_path));
+	
+	if((sockd=socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+		PRIVS_RELINQUISH;
+		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Cannot create socket connection to ClamAVd: %d", errno);
+		return -1;
+	}
+	
+	if(connect(sockd, (struct sockaddr *)&server, sizeof(struct sockaddr_un)) < 0) {
+		close(sockd);
+		PRIVS_RELINQUISH;
+		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Cannot connect to ClamAVd: (%d) %s", errno, clamhost);
+		return -1;
+	}
+	PRIVS_RELINQUISH;
+
+	return sockd;
+} 
 
 MODRET clamav_scan(cmd_rec *cmd) {
-	config_rec *        c = NULL;
-	struct cl_limits    limits;
-	const char *        virname;
-	unsigned long int	size;
-	int                 ret;
-	mode_t              prevmask;
+	config_rec          *c = NULL;
+	int                 ret, infected = 0;
+	char				fullpath[4096];
 
 	c = find_config(CURRENT_CONF, CONF_PARAM, "ClamAV", FALSE);
-
+	
 	if(!c || !*(int*)(c->argv[0]))
 		return DECLINED(cmd);
 	
-	/* pr_log_pri(PR_LOG_INFO, MOD_CLAMAV_VERSION ": info: scanning file: %s",cmd->arg); */
-	memset(&limits, 0, sizeof(struct cl_limits));
-	limits.maxfiles = 1000;
-	limits.maxfilesize = 20 * 1048576;
-	limits.maxreclevel = 5;
-	limits.maxratio = 200;
-	limits.archivememlim = 0;
-	/* cl_settempdir("",1); */
-
-	/* clamav insists on a tmp directory for handling archives */
-	prevmask = umask(0);
-	if(pr_fsio_mkdir("tmp",S_IREAD|S_IWRITE|S_IEXEC)!=0) {
-		if(errno != EEXIST)
-		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": notice: mkdir() failed: %d",errno);
-	}
-	umask(prevmask);
-
 	/* hold on to the ClamWarn configuration option */
 	c = find_config(CURRENT_CONF, CONF_PARAM, "ClamWarn", TRUE);
 
+	/* Figure out the full path */
+	if(session.chroot_path) {
+		sstrncpy(fullpath, strcmp(pr_fs_getvwd(), "/") ?
+          pdircat(cmd->tmp_pool, session.chroot_path, pr_fs_getvwd(), NULL) :
+          session.chroot_path, 4096);
+	} else {
+		sstrncpy(fullpath, pr_fs_getcwd(), 4096);
+	}
+	sstrcat(fullpath, "/", 4096 - strlen(fullpath));
+	sstrcat(fullpath, cmd->arg, 4096 - strlen(fullpath));
+
 	/* scan it! */
-	if((ret=cl_scanfile(cmd->arg,&virname,&size,clamav_root,&limits,CL_ARCHIVE|CL_MAIL|CL_OLE2)) == CL_VIRUS) {
-		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": warning: file '%s' contains the virus '%s'. File was deleted.", cmd->arg, virname);
-        if(c && *(int*)(c->argv[0]))
-    		pr_response_add_err(R_DUP,"File contains the %s virus.", virname);
-		if((ret=pr_fsio_unlink(cmd->arg))!=0) {
-			pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": notice: unlink() failed: %d",errno);
-		}
+	if((ret=clamavd_scan(clamd_sockd, fullpath, (c ? *(int*)(c->argv[0]) : 0), cmd->arg)) >= 0) {
+		infected += ret;
+	}
+	
+	if(infected) {
 		return ERROR(cmd);
 	}
-	if(ret != CL_CLEAN) {
-		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: clamav returned the error message: %s", cl_strerror(ret));
-	}
+
 	if(c && *(int*)(c->argv[0])) 
-		pr_response_add(R_226,"File passed ClamAV virus scanner containing %d patterns.", patcount);
+		pr_response_add(R_226,"File passed ClamAV virus scanner.");
 
 	return DECLINED(cmd);
 }
@@ -103,7 +187,7 @@ MODRET set_clamav(cmd_rec *cmd) {
 	config_rec *c = NULL;
 
 	CHECK_ARGS(cmd, 1);
-	CHECK_CONF(cmd, CONF_ROOT|CONF_ANON|CONF_LIMIT|CONF_VIRTUAL);
+	CHECK_CONF(cmd, CONF_ROOT|CONF_ANON|CONF_LIMIT|CONF_VIRTUAL|CONF_GLOBAL);
 	if((bool = get_boolean(cmd,1)) == -1)
 		CONF_ERROR(cmd, "requires a boolean value");
 
@@ -114,58 +198,49 @@ MODRET set_clamav(cmd_rec *cmd) {
 	return HANDLED(cmd);
 }
 
-static int clamav_init(void) {
-	int		ret = 0;
-
-	patcount = 0;
-	if((ret=cl_loaddbdir(cl_retdbdir(), &clamav_root, &patcount))) {
-		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: cl_loaddbdir(): %s", cl_strerror(ret));
-	}
-	if((ret=cl_buildtrie(clamav_root))) {
-		pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: cl_buildtrie(): %s", cl_strerror(ret));
-	}
-	memset(&dbstat, 0, sizeof(struct cl_stat));
-	cl_statinidir(cl_retdbdir(), &dbstat);
-	pr_log_pri(PR_LOG_INFO, MOD_CLAMAV_VERSION ": info: loaded %d virus patterns", patcount);
-	pr_event_register(&clamav_module, "core.restart", clamav_restart_ev, NULL);
-	return 0;
+MODRET set_clamavd_local_socket(cmd_rec *cmd) {
+	CHECK_ARGS(cmd, 1);
+	CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+	
+	add_config_param_str("ClamLocalSocket", 1, cmd->argv[1]);
+	return HANDLED(cmd);
 }
 
-static void clamav_restart_ev(const void *event_data, void *user_data) {
-	reload_av_database();
-}
-
-static int clamav_session_init(void) {
-	return reload_av_database();
-}
-
-static int reload_av_database(void) {
-	int ret;
-
-	/* check for updated virus defs */
-	pr_log_pri(PR_LOG_INFO, MOD_CLAMAV_VERSION ": info: checking for newer antivirus defs");
-	if(cl_statchkdir(&dbstat) == 1) {
-		/* reload virus definitions */
-		cl_free(clamav_root);
-		clamav_root = NULL;
-		patcount = 0;
-		if((ret=cl_loaddbdir(cl_retdbdir(), &clamav_root, &patcount))) {
-			pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: cl_loaddbdir(): %s", cl_strerror(ret));
-		}
-		if((ret=cl_buildtrie(clamav_root))) {
-			pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: cl_buildtrie(): %s", cl_strerror(ret));
-		}
-		pr_log_pri(PR_LOG_INFO, MOD_CLAMAV_VERSION ": info: loaded %d virus patterns", patcount);
-		cl_statfree(&dbstat);
-		memset(&dbstat, 0, sizeof(struct cl_stat));
-		cl_statinidir(cl_retdbdir(), &dbstat);
+static void clamav_shutdown(const void *event_data, void *user_data) {
+	pr_log_pri(PR_LOG_INFO, MOD_CLAMAV_VERSION ": info: disconnected from Clamd.");
+	if(clamd_sockd) {
+		clamavd_session_stop(clamd_sockd);
+		close(clamd_sockd);
 	}
+}
+
+static int clamav_sess_init(void) {
+	char *local_socket = NULL;
+
+	clamd_sockd = 0;
+
+	local_socket = (char*)get_param_ptr(main_server->conf, "ClamLocalSocket", FALSE);
+	if(!local_socket) {
+		pr_log_pri(PR_LOG_INFO, MOD_CLAMAV_VERSION ": warning: No local socket was specified.");
+		return 0;
+	}
+
+    if((clamd_sockd = clamavd_connect(local_socket)) < 0) {
+        pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": Cannot connect to ClamAVd.");
+        return 0;
+    }
+
+	clamavd_session_start(clamd_sockd);
+
+	pr_event_register(&clamav_module, "core.exit", clamav_shutdown, NULL);
+
 	return 0;
 }
 
 static conftable clamav_conftab[] = {
 	{ "ClamAV", set_clamav, NULL },
 	{ "ClamWarn", set_clamav, NULL },
+	{ "ClamLocalSocket", set_clamavd_local_socket, NULL },
 	{ NULL }
 };
 
@@ -179,12 +254,12 @@ static cmdtable clamav_cmdtab[] = {
 module clamav_module = {
 	NULL,
 	NULL,
-	0x20,			/* api ver */
+	0x20,				/* api ver */
 	"clamav",
 	clamav_conftab,
 	clamav_cmdtab,
-	NULL, 			/* auth function table */
-	clamav_init, 		/* init function */
-	clamav_session_init	/* session init function */
+	NULL, 				/* auth function table */
+	NULL, 		/* init function */
+	clamav_sess_init	/* session init function */
 };
 

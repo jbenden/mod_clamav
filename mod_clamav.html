@@ -14,12 +14,15 @@
 The <code>mod_clamav</code> module is designed to scan files
 immediately upon upload through FTP for viruses.  If the file is found to be infected, it is
 immediately removed from the system, and a message is logged.  If the file
-is found to be free of viruses, the FTP client is sent an additional message
-stating the file was scanned by X patterns.
+is found to be free of viruses, the FTP client is sent an optional message
+stating the file was scanned.
 <br><br>
 This module is best employed in scenarios where many users are using a
 system that is maintained by another entity.  In this scenario, the administrator
 of the machine is helping to ensure that no viruses are spread to other users.
+
+<p>
+<b>Warning:</b> If you are using a newer version of ClamAV, such as 0.88, then there was a newly introduced timeout for sessions, which causes this module to experience problems. See: <a href="http://lists.clamav.net/message/20060128.173434.bce66f06.en.html">http://lists.clamav.net/message/20060128.173434.bce66f06.en.html</a>
 
 <p>
 This module was compiled and tested against ProFTPD 1.2.10.  Installation
@@ -40,6 +43,7 @@ questions, concerns, or suggestions regarding this module.
 <ul>
   <li><a href="#ClamAV">ClamAV</a>
   <li><a href="#ClamWarn">ClamWarn</a>
+  <li><a href="#ClamLocalSocket">ClamLocalSocket</a>
 </ul>
 
 <hr>
@@ -72,15 +76,31 @@ virus scanning and virus removal features are active. If no
 do no virus scanning.
 
 <p>
-The source code contains hard-coded limits related to virus scanning, which may need to be tweaked for 
-your environment.  In the future, these values will be moved in to configuration directives.
+Example:
+<pre>
+  &lt;IfModule mod_clamav.c&gt;
+    # Enable virus scanning and removal
+    ClamAV on
+    # Specify the UNIX Local Socket
+    ClamLocalSocket /tmp/clamd    
+  &lt;/IfModule&gt;
+</pre>
 
 <p>
-<b>NOTE:</b> It is highly recommended to send a HUP signal to the parent ProFTPD process after executing
-<code>freshclam</code>.  This causes the parent process to read the newest AV updates, which automatically
-gives new child processes the latest updates.  If this isn't done, the child processes will always read the latest
-updates available upon their startup.  This will effect the performace of the FTP server, as each new connecting
-client must read the latest AV updates.
+See also:
+
+<hr>
+<h2><a name="ClamLocalSocket">ClamLocalSocket</a></h2>
+<strong>Syntax:</strong>ClamLocalSocket <em>string</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, &lt;Global&gt;<br>
+<strong>Module:</strong> mod_clamav<br>
+<strong>Compatibility:</strong> 1.2.10
+
+<p>
+The <code>ClamLocalSocket</code> directive will configure the UNIX socket used
+to connect to the Clamd daemon process. If no <code>ClamLocalSocket</code>
+directive is configured, then the module will do no scanning.
 
 <p>
 Example:
@@ -88,11 +108,10 @@ Example:
   &lt;IfModule mod_clamav.c&gt;
     # Enable virus scanning and removal
     ClamAV on
+    # Specify the UNIX Local Socket
+    ClamLocalSocket /tmp/clamd
   &lt;/IfModule&gt;
 </pre>
-
-<p>
-See also:
 
 <p>
 <hr>
@@ -113,12 +132,12 @@ usual steps for using third-party modules in proftpd:
 <hr><br>
 
 Author: <i>Joseph Benden, Sr.</i><br>
-Last Updated: <i>07/04/2005 3:57 PM</i><br>
+Last Updated: <i>01/27/2006 2:43 PM</i><br>
 
 <br><hr>
 
 <font size=2><b><i>
-&copy; Copyright 2005 Thralling Penguin LLC.<br>
+&copy; Copyright 2005-2006 Thralling Penguin LLC.<br>
  All Rights Reserved<br>
 </i></b></font>
 
