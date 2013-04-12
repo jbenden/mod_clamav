@@ -34,7 +34,7 @@
 /**
  * Module version and declaration
  */
-#define MOD_CLAMAV_VERSION "mod_clamav/0.9"
+#define MOD_CLAMAV_VERSION "mod_clamav/0.10"
 module clamav_module;
 
 /**
@@ -42,7 +42,14 @@ module clamav_module;
  */
 static int clamd_sockd = 0, is_remote = 0;
 static char *clamd_host = NULL;
-static int clamd_port = 0, clamd_minsize = 0, clamd_maxsize = -1;
+static int clamd_port = 0;
+static unsigned long clamd_minsize = 0, clamd_maxsize = 0;
+static int clam_errno;
+
+/**
+ * Local declarations
+ */
+static unsigned long parse_nbytes(char *nbytes_str, char *units_str);
 
 /**
  * Read the returned information from Clamavd.
@@ -135,6 +142,7 @@ int clamavd_connect_check(int sockd) {
 				errno, strerror(errno));
 		close(sockd);
 		clamd_sockd = -1;
+		clam_errno = errno;
 		return 0;
 	}
 			
@@ -143,6 +151,7 @@ int clamavd_connect_check(int sockd) {
 				errno, strerror(errno));
 		close(sockd);
 		clamd_sockd = -1;
+		clam_errno = errno;
 		return 0;
 	}
 
@@ -158,6 +167,7 @@ int clamavd_connect_check(int sockd) {
 	fclose(fd);
 	close(sockd);
 	clamd_sockd = -1;
+	clam_errno = errno;
 	return 0;
 }
 
@@ -180,11 +190,13 @@ int clamavd_scan(int sockd, const char *abs_filename, const char *rel_filename) 
 			pr_log_pri(PR_LOG_ERR, 
 					MOD_CLAMAV_VERSION ": error: Cannot re-connect to Clamd (%d): %s", 
 					errno, strerror(errno));
+			clam_errno = errno;
 			return -1;
 		}
 		clamavd_session_start(clamd_sockd);
 		sockd = clamd_sockd;
 		pr_log_debug(DEBUG4, "Successfully reconnected to Clamd.");
+		clam_errno = 0;
 	}
 	
 	if (write(sockd, scancmd, strlen(scancmd)) <= 0) {
@@ -192,6 +204,7 @@ int clamavd_scan(int sockd, const char *abs_filename, const char *rel_filename) 
 				MOD_CLAMAV_VERSION ": error: Cannot write to the Clamd socket: %d", errno);
 		free(scancmd);
 		scancmd = NULL;
+		clam_errno = errno;
 		return -1;
 	}
 	
@@ -207,7 +220,7 @@ int clamavd_connect(void) {
 	struct sockaddr_un server;
 	struct sockaddr_in server2;
 	struct hostent *he;
-	int sockd, *port, *minsize, *maxsize;
+	int sockd, *port;
 	
 	/**
 	 * We will set the global socket to non-connected, just in-case.
@@ -236,16 +249,6 @@ int clamavd_connect(void) {
 		pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Connecting to local Clamd socket '%s'", clamd_host);
 	}
 	
-	if ((minsize = (int *) get_param_ptr(CURRENT_CONF, "ClamMinSize", TRUE)) <= 0)
-		clamd_minsize = 0;
-	else
-		clamd_minsize = *minsize;
-	
-	if ((maxsize = (int *) get_param_ptr(CURRENT_CONF, "ClamMaxSize", TRUE)) <= 0)
-		clamd_maxsize = -1;
-	else
-		clamd_maxsize = *maxsize;
-	
 	PRIVS_ROOT;	
 	
 	if (is_remote == 0) {
@@ -258,6 +261,7 @@ int clamavd_connect(void) {
 			pr_log_pri(PR_LOG_ERR, 
 					MOD_CLAMAV_VERSION ": error: Cannot create socket connection to Clamd (%d): %s", 
 					errno, strerror(errno));
+			clam_errno = errno;
 			return -1;
 		}
 		
@@ -266,6 +270,7 @@ int clamavd_connect(void) {
 			PRIVS_RELINQUISH;
 			pr_log_pri(PR_LOG_ERR, 
 					MOD_CLAMAV_VERSION ": error: Cannot connect to Clamd (%d): %s", errno, strerror(errno));
+			clam_errno = errno;
 			return -1;
 		}
 	} else {
@@ -278,6 +283,7 @@ int clamavd_connect(void) {
 			pr_log_pri(PR_LOG_ERR, 
 					MOD_CLAMAV_VERSION ": error: Cannot create socket connection Clamd (%d): %s", 
 					errno, strerror(errno));
+			clam_errno = errno;
 			return -1;
 		}
 		
@@ -285,6 +291,7 @@ int clamavd_connect(void) {
 			close(sockd);
 			PRIVS_RELINQUISH;
 			pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Cannot resolve hostname '%s'", clamd_host);
+			clam_errno = errno;
 			return -1;
 		}
 		server2.sin_addr = *(struct in_addr *) he->h_addr_list[0];
@@ -295,11 +302,14 @@ int clamavd_connect(void) {
 			pr_log_pri(PR_LOG_ERR, 
 					MOD_CLAMAV_VERSION ": error: Cannot connect to Clamd (%d): %s", 
 					errno, strerror(errno));
+			clam_errno = errno;
 			return -1;
 		}
 	}
 	
 	PRIVS_RELINQUISH;
+	
+	clam_errno = 0;
 	
 	return sockd;
 } 
@@ -312,6 +322,7 @@ int clamav_scan(cmd_rec *cmd) {
 	char *file, *rel_file;
 	struct stat st;
 	config_rec *c = NULL;
+	unsigned long *minsize, *maxsize;	
 	
 	c = find_config(CURRENT_CONF, CONF_PARAM, "ClamAV", FALSE);
 	if (!c || !*(int*)(c->argv[0]))
@@ -358,29 +369,43 @@ int clamav_scan(cmd_rec *cmd) {
 		return 1;
 	}
 	
-	if (clamd_minsize > 0 || clamd_maxsize != -1) {
+	/**
+	 * Handle min/max settings
+	 */
+	if ((minsize = (unsigned long *) get_param_ptr(CURRENT_CONF, "ClamMinSize", TRUE)) == 0UL)
+		clamd_minsize = 0;
+	else
+		clamd_minsize = *minsize;
+	
+	if ((maxsize = (unsigned long *) get_param_ptr(CURRENT_CONF, "ClamMaxSize", TRUE)) == 0UL)
+		clamd_maxsize = 0;
+	else
+		clamd_maxsize = *maxsize;
+	
+	if (clamd_minsize > 0 || clamd_maxsize > 0) {
 		/* Stat the file to acquire the size */
 		if (pr_fsio_stat(rel_file, &st) == -1) {
 			pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": error: Can not stat file (%d): %s", errno,
 					strerror(errno));
 			return 1;
 		}
+		pr_log_debug(DEBUG4, "ClamMinSize=%lu ClamMaxSize=%lu Filesize=%" PR_LU, clamd_minsize, clamd_maxsize, (pr_off_t) st.st_size);
 	}
 	
 	if (clamd_minsize > 0) {
 		/* test the minimum size */
 		if (st.st_size < clamd_minsize) {
-			pr_log_debug(DEBUG4, "File is too small, skipping virus scan. min = %d size = %ld", 
-					clamd_minsize, st.st_size);
+			pr_log_debug(DEBUG4, "File is too small, skipping virus scan. min = %lu size = %" PR_LU, 
+					clamd_minsize, (pr_off_t) st.st_size);
 			return 0;
 		}
 	}
 	
-	if (clamd_maxsize != -1) {
+	if (clamd_maxsize > 0) {
 		/* test the maximum size */
 		if (st.st_size > clamd_maxsize) {
-			pr_log_debug(DEBUG4, "File is too large, skipping virus scan. max = %d size = %ld",
-					clamd_maxsize, st.st_size);
+			pr_log_debug(DEBUG4, "File is too large, skipping virus scan. max = %lu size = %" PR_LU,
+					clamd_maxsize, (pr_off_t) st.st_size);
 			return 0;
 		}
 	}
@@ -388,12 +413,81 @@ int clamav_scan(cmd_rec *cmd) {
 	pr_log_debug(DEBUG4, 
 			"Going to virus scan absolute filename = '%s' with relative filename = '%s'.", file, rel_file);
 	
+	clam_errno = 0;
 	if (clamavd_scan(clamd_sockd, file, rel_file) > 0) {
 		return 1;
 	}
 	
-	pr_log_debug(DEBUG4, "No virus detected in filename = '%s'.", file);
+	if (clam_errno == 0)
+		pr_log_debug(DEBUG4, "No virus detected in filename = '%s'.", file);
+	else
+		pr_log_debug(DEBUG4, "Skipped virus scan due to errno = %d", clam_errno);
+	
 	return 0;
+}
+
+/**
+ * Parse string size description and return value.
+ */
+static unsigned long parse_nbytes(char *nbytes_str, char *units_str) {
+	long res;
+	unsigned long nbytes;
+	char *endp = NULL;
+	float units_factor = 0.0;
+
+	/* clear any previous local errors */
+	clam_errno = 0;
+
+	/* first, check the given units to determine the correct multiplier
+	 */
+	if (!strcasecmp("Gb", units_str)) {
+		units_factor = 1024.0 * 1024.0 * 1024.0;
+
+	} else if (!strcasecmp("Mb", units_str)) {
+		units_factor = 1024.0 * 1024.0;
+
+	} else if (!strcasecmp("Kb", units_str)) {
+		units_factor = 1024.0;
+
+	} else if (!strcasecmp("b", units_str)) {
+		units_factor = 1.0;
+
+	} else {
+		clam_errno = EINVAL;
+		return 0;
+	}
+
+	/* make sure a number was given */
+	if (!isdigit((int) *nbytes_str)) {
+		clam_errno = EINVAL;
+		return 0;
+	}
+
+	/* knowing the factor, now convert the given number string to a real
+	 * number
+	 */
+	res = strtol(nbytes_str, &endp, 10);
+
+	if (errno == ERANGE) {
+		clam_errno = ERANGE;
+		return 0;
+	}
+
+	if (endp && *endp) {
+		clam_errno = EINVAL;
+		return 0;
+	}
+
+	/* don't bother to apply the factor if that will cause the number to
+	 * overflow
+	 */
+	if (res > (ULONG_MAX / units_factor)) {
+		clam_errno = ERANGE;
+		return 0;
+	}
+
+	nbytes = (unsigned long) res * units_factor;
+	return nbytes;
 }
 
 /**
@@ -420,7 +514,6 @@ MODRET set_clamav(cmd_rec *cmd) {
 /**
  * Configuration setter: ClamLocalSocket
  */
-
 MODRET set_clamavd_local_socket(cmd_rec *cmd) {
 	config_rec *c = NULL;
 	
@@ -436,7 +529,6 @@ MODRET set_clamavd_local_socket(cmd_rec *cmd) {
 /**
  * Configuration setter: ClamServer
  */
-
 MODRET set_clamavd_server(cmd_rec *cmd) {
 	config_rec *c = NULL;
 	
@@ -452,7 +544,6 @@ MODRET set_clamavd_server(cmd_rec *cmd) {
 /**
  * Configuration setter: ClamPort
  */
-
 MODRET set_clamavd_port(cmd_rec *cmd) {
 	config_rec *c = NULL;
 	
@@ -470,16 +561,28 @@ MODRET set_clamavd_port(cmd_rec *cmd) {
 /**
  * Configuration setter: ClamMinSize
  */
-
 MODRET set_clamavd_minsize(cmd_rec *cmd) {
 	config_rec *c = NULL;
+	unsigned long nbytes = 0;
 	
-	CHECK_ARGS(cmd, 1);
+	CHECK_ARGS(cmd, 2);
 	CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_DIR);
 	
-	c = add_config_param(cmd->argv[0], 1, NULL);
-	c->argv[0] = pcalloc(c->pool, sizeof(int));
-	*((int *) c->argv[0]) = (int) atol(cmd->argv[1]);
+	if ((nbytes = parse_nbytes(cmd->argv[1], cmd->argv[2])) == 0) {
+		char ulong_max[80] = {'\0'};
+		sprintf(ulong_max, "%lu", (unsigned long) ULONG_MAX);
+
+		if (clam_errno == EINVAL)
+			CONF_ERROR(cmd, "invalid parameters");
+
+		if (clam_errno == ERANGE)
+			CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+					"number of bytes must be between 0 and ", ulong_max, NULL));
+	}
+
+    c = add_config_param(cmd->argv[0], 1, NULL);
+    c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
+    *((unsigned long *) c->argv[0]) = nbytes;
 	c->flags |= CF_MERGEDOWN;
 	
 	return PR_HANDLED(cmd);
@@ -488,16 +591,28 @@ MODRET set_clamavd_minsize(cmd_rec *cmd) {
 /**
  * Configuration setter: ClamMaxSize
  */
-
 MODRET set_clamavd_maxsize(cmd_rec *cmd) {
 	config_rec *c = NULL;
+	unsigned long nbytes = 0;
 	
-	CHECK_ARGS(cmd, 1);
+	CHECK_ARGS(cmd, 2);
 	CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_DIR);
 	
-	c = add_config_param(cmd->argv[0], 1, NULL);
-	c->argv[0] = pcalloc(c->pool, sizeof(int));
-	*((int *) c->argv[0]) = (int) atol(cmd->argv[1]);
+	if ((nbytes = parse_nbytes(cmd->argv[1], cmd->argv[2])) == 0) {
+		char ulong_max[80] = {'\0'};
+		sprintf(ulong_max, "%lu", (unsigned long) ULONG_MAX);
+
+		if (clam_errno == EINVAL)
+			CONF_ERROR(cmd, "invalid parameters");
+
+		if (clam_errno == ERANGE)
+			CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+					"number of bytes must be between 0 and ", ulong_max, NULL));
+	}
+
+    c = add_config_param(cmd->argv[0], 1, NULL);
+    c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
+    *((unsigned long *) c->argv[0]) = nbytes;
 	c->flags |= CF_MERGEDOWN;
 	
 	return PR_HANDLED(cmd);
