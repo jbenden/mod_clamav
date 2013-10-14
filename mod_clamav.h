@@ -1,6 +1,6 @@
 /*
  * mod_clamav - ClamAV virus scanning module for ProFTPD
- * Copyright (c) 2005-2008, Joseph Benden <joe@thrallingpenguin.com>
+ * Copyright (c) 2005-2013, Joseph Benden <joe@thrallingpenguin.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,10 +33,10 @@
 /**
  * Function declarations
  */
-int clamavd_result(int sockd, const char *abs_filename, const char *rel_filename);
-int clamavd_connect_check(int sockd);
-int clamavd_scan(int sockd, const char *abs_filename, const char *rel_filename);
-int clamavd_connect(void);
+static int clamavd_result(int sockd, const char *abs_filename, const char *rel_filename);
+static int clamavd_connect_check(int sockd);
+static int clamavd_scan(int sockd, const char *abs_filename, const char *rel_filename);
+static int clamavd_connect(void);
 int clamav_scan(cmd_rec *cmd);
 
 #endif
