@@ -116,6 +116,12 @@ tool to add mod_clamav, as a DSO module, to your existing serverL
 
     prxs -c -i -d mod_clamav.c
 
+## Example Configuration
 
-Author: Joseph Benden
-Last Updated: 2013-10-29
+Tip: Enable HiddenStore for virus scanning to take place in the background.
+
+    <IfModule mod_clamav.c>
+      ClamAV on
+      ClamServer localhost
+      ClamPort 3310
+    </IfModule>
