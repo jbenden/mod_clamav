@@ -22,49 +22,49 @@ questions, concerns, or suggesstions regarding this module.
  
 ----
 
-### <ClamAV>
+* ClamAV
 
-syntax: <ClamAV on>
-default: none
-context: all
-module: mod_clamav
-compatibility: 1.3.2
+    syntax: <ClamAV on>
+    default: none
+    context: all
+    module: mod_clamav
+    compatibility: 1.3.2
 
 The ClamAV directive will configure if the Mod_Clamav's virus scanning
 and virus removal features are active. If no ClamAV directive is
 configured, then the module will do no virus scanning.
 
-### <ClamServer>
+* ClamServer
 
-syntax: <ClamServer hostname/ip>
-default: none
-context: server config, <virtualhost>, <global>, <directory>
-module: mod_clamav
-compatibility: 0.6 of mod_clamav
+    syntax: <ClamServer hostname/ip>
+    default: none
+    context: server config, <virtualhost>, <global>, <directory>
+    module: mod_clamav
+    compatibility: 0.6 of mod_clamav
 
 The ClamServer directive will configure the hostname/IP address used
 to connect to the Clamd daemon process. If no ClamServer directive is
 configured, then the module will do no TCP Clamd scanning.
 
-### <ClamPort>
+* ClamPort
 
-syntax: <ClamPort integer>
-default: 3310
-context: server config, <virtualhost>, <global>, <directory>
-module: mod_clamav
-compatibility: 0.6 of mod_clamav
+    syntax: <ClamPort integer>
+    default: 3310
+    context: server config, <virtualhost>, <global>, <directory>
+    module: mod_clamav
+    compatibility: 0.6 of mod_clamav
 
 The ClamPort directive will configure the TCP port used to connect to
 the Clamd daemon process. If no ClamPort directive is configured,
 then the module will use the Clamd default TCP port of 3310.
  
-### <ClamMinSize>
+* ClamMinSize
 
-syntax: <ClamMinSize integer [units]>
-default: 0
-context: server config, <virtualhost>, <global>, <directory>
-module: mod_clamav
-compatibility: 0.10 of mod_clamav
+    syntax: <ClamMinSize integer [units]>
+    default: 0
+    context: server config, <virtualhost>, <global>, <directory>
+    module: mod_clamav
+    compatibility: 0.10 of mod_clamav
 
 The ClamMinSize directive will configure the minimum file size for
 scanning. If the file size is smaller than this value, then the module
@@ -77,13 +77,13 @@ the directive, and is followed by a units specifier of
 by the appropriate factor. A value of zero (0) disables this
 directive.
  
-### <ClamMaxSize>
+* ClamMaxSize
 
-syntax: <ClamMaxSize integer [units]>
-default: 0
-context: server config, <virtualhost>, <global>, <directory>
-module: mod_clamav
-compatibility: 0.10 of mod_clamav
+    syntax: <ClamMaxSize integer [units]>
+    default: 0
+    context: server config, <virtualhost>, <global>, <directory>
+    module: mod_clamav
+    compatibility: 0.10 of mod_clamav
 
 The ClamMaxSize directive will configure the maximum file size for
 scanning. If the file size is larger than this value, then the module
