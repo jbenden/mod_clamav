@@ -323,6 +323,21 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
         if (!do_scan) {
                 return close(fd);
         }
+        
+        /* Use the file descriptor to determine the absolute path of the uploaded
+         * file, regardless of the possible use of chroot or vroot. */
+        char link[PR_TUNABLE_PATH_MAX + 1], link_dest[PR_TUNABLE_PATH_MAX + 1];
+        sprintf(link,"/proc/self/fd/%d", fd);
+        if (readlink(link, link_dest, sizeof(link_dest)) > 0) {
+                abs_path = pstrdup(fh->fh_pool, link_dest);
+        } else {
+                /* Fallback: Figure out the absolute path from the session-settings. */
+                if (session.chroot_path) {
+                        abs_path = pdircat(fh->fh_pool, session.chroot_path, fh->fh_path, NULL);
+                } else {
+                        abs_path = pstrdup(fh->fh_pool, fh->fh_path);
+                }
+        }
 
         /* Make sure the data is written to disk, so that the fstat(2) picks
          * up the size properly.
@@ -344,15 +359,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
         if (!c || !*(int *)(c->argv[0]))
                 return 0;
 
-        /**
-         * Figure out the absolute path of our directory.
-         */
-        if (session.chroot_path) {
-                abs_path = pdircat(fh->fh_pool, session.chroot_path, fh->fh_path, NULL);
-        } else {
-                abs_path = pstrdup(fh->fh_pool, fh->fh_path);
-        }
-
+        /* Save the relative path. */
         rel_path = pstrdup(fh->fh_pool, fh->fh_path);
 
         pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": absolute path is '%s', relative path is '%s'", abs_path, rel_path);
