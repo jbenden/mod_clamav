@@ -385,12 +385,16 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   /**
    * Figure out the absolute path of our directory.
    */
-  abs_path = pr_table_get(cmd->notes, key, NULL);
-  if (!abs_path) {
-    if (*abs_path != '/') {
-      const char *chroot_path = strcmp(pr_fs_getvwd(), "/") ? pr_fs_getvwd() : session.chroot_path;
-      abs_path = pdircat(fh->fh_pool, chroot_path, abs_path, NULL);
-    }
+  char buf[256];
+  getcwd(buf, 255);
+  abs_path = fh->fh_path;
+  if (abs_path) {
+    pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": vwd=%s fh_path=%s chroot=%s cwd=%s buf=%s",
+	       pr_fs_getvwd(), abs_path, session.chroot_path, pr_fs_getcwd(),
+	       buf);
+    const char *chroot_path = session.chroot_path;
+    if (buf && strcmp(buf, pr_fs_getcwd()) != 0)
+      abs_path = pdircat(fh->fh_pool, buf, abs_path, NULL);
   }
   rel_path = pstrdup(fh->fh_pool, fh->fh_path);
 
@@ -437,7 +441,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     if (remove_on_failure) {
       pr_log_debug(DEBUG4,
                    MOD_CLAMAV_VERSION ": removing failed upload of filename = '%s' with relative filename = '%s'.", abs_path, rel_path);
-      if ((ret=pr_fsio_unlink(rel_path))!=0) {
+      if (pr_fsio_unlink(rel_path)!=0) {
         pr_log_pri(PR_LOG_ERR,
                    MOD_CLAMAV_VERSION ": notice    : unlink() failed (%d): %s",
                    errno, strerror(errno));
