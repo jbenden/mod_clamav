@@ -395,6 +395,8 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     const char *chroot_path = session.chroot_path;
     if (buf && strcmp(buf, pr_fs_getcwd()) != 0)
       abs_path = pdircat(fh->fh_pool, buf, abs_path, NULL);
+    else if (buf && strcmp(buf, pr_fs_getcwd()) == 0 && session.chroot_path)
+      abs_path = pdircat(fh->fh_pool, session.chroot_path, abs_path, NULL);
   }
   rel_path = pstrdup(fh->fh_pool, fh->fh_path);
 
