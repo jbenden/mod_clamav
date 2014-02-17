@@ -1,0 +1,10 @@
+I've modified the mod_clamav version from:
+
+  http://www.thrallingpenguin.com/resources/mod_clamav.htm
+
+Changes:
+
+1. No patching of the core proftpd code required.
+2. Works with SFTP/SCP transfers.
+3. Generates event when an infested file is upload; mod_ban can then generate
+   a ban based on this event.
