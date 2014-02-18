@@ -385,8 +385,8 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   /**
    * Figure out the absolute path of our directory.
    */
-  char buf[256];
-  getcwd(buf, 255);
+  char buf[PR_TUNABLE_PATH_MAX + 1];
+  getcwd(buf, PR_TUNABLE_PATH_MAX);
   abs_path = fh->fh_path;
   if (abs_path) {
     pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": vwd=%s fh_path=%s chroot=%s cwd=%s buf=%s",
@@ -397,9 +397,9 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
       if (strcmp(pr_fs_getcwd(), "/") != 0) {
         char *pos = strstr(buf, pr_fs_getcwd());
         if (pos) {
-	  pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": pos=%s", pos);
+          pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": pos=%s", pos);
           *pos = 0;
-	}
+        }
         pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": buf after strstr(): %s",
                    buf);
       }
