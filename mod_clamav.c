@@ -395,9 +395,11 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     const char *chroot_path = session.chroot_path;
     if (buf && strcmp(buf, pr_fs_getcwd()) != 0) {
       if (strcmp(pr_fs_getcwd(), "/") != 0) {
-        char *pos = strstr(pr_fs_getcwd(), buf);
-        if (pos)
+        char *pos = strstr(buf, pr_fs_getcwd());
+        if (pos) {
+	  pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": pos=%s", pos);
           *pos = 0;
+	}
         pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": buf after strstr(): %s",
                    buf);
       }
