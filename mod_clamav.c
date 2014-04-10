@@ -35,7 +35,7 @@
 /**
  * Module version and declaration
  */
-#define MOD_CLAMAV_VERSION "mod_clamav/0.13rc2"
+#define MOD_CLAMAV_VERSION "mod_clamav/0.13rc3"
 module clamav_module;
 
 /**
@@ -173,6 +173,95 @@ static int clamavd_connect_check(int sockd) {
   clamd_sockd = -1;
   clam_errno = errno;
   return 0;
+}
+
+/**
+ * Request Clamavd to perform a scan of the file contents.
+ */
+static int clamavd_scan_stream(int sockd, const char *abs_filename,
+                               const char *rel_filename) {
+  unsigned int len = 0;
+  char *buf;
+  size_t bufsz = 4096;
+  long res;
+  FILE *fd;
+
+  if (!clamavd_connect_check(sockd)) {
+    if ((clamd_sockd = clamavd_connect()) < 0) {
+      pr_log_pri(PR_LOG_ERR,
+                 MOD_CLAMAV_VERSION ": error: Cannot re-connect to Clamd (%d): %s",
+                 errno, strerror(errno));
+      clam_errno = errno;
+      return -1;
+    }
+    sockd = clamd_sockd;
+    pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Successfully reconnected to Clamd.");
+    clam_errno = 0;
+  }
+
+  if (write(sockd, "nINSTREAM\n", 10) <= 0) {
+    pr_log_pri(PR_LOG_ERR,
+               MOD_CLAMAV_VERSION ": Cannot write to the Clamd socket: %d", errno);
+    clam_errno = errno;
+    return -1;
+  }
+
+  fd = fopen(rel_filename, "r");
+  if (!fd) {
+    pr_log_pri(PR_LOG_ERR,
+               MOD_CLAMAV_VERSION ": Cannot open file '%s' errno=%d.", rel_filename, errno);
+    clam_errno = errno;
+    return -1;
+  }
+
+  /* rewind file descriptor */
+  fseek(fd, 0, SEEK_SET);
+
+  buf = malloc(bufsz);
+  if (!buf) {
+    pr_log_pri(PR_LOG_CRIT, "Out of memory!");
+    end_login(1);
+  }
+
+  /* send file contents using protocol defined by Clamd */
+  while ((res = fread(buf, 1, bufsz, fd)) > 0) {
+    len = htonl(res);
+    pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Streaming %ld bytes (%d, %u) to Clamd.", res, len, sizeof(len));
+    if (write(sockd, (void *) &len, sizeof(len)) <= 0) {
+      pr_log_pri(PR_LOG_ERR,
+                 MOD_CLAMAV_VERSION ": Cannot write byte count to Clamd socket: %d", errno);
+      clam_errno = errno;
+      free(buf);
+      return -1;
+    }
+    if (write(sockd, buf, res) != res) {
+      pr_log_pri(PR_LOG_ERR,
+                 MOD_CLAMAV_VERSION ": Cannot stream file to Clamd socket: %d", errno);
+      clam_errno = errno;
+      fclose(fd);
+      free(buf);
+      return -1;
+    }
+    if (feof(fd)) break;
+  }
+  fclose(fd);
+  free(buf);
+
+  /* send null length byte, to terminate stream */
+  len = 0;
+  if (write(sockd, (void *) &len, sizeof(len)) <= 0) {
+    pr_log_pri(PR_LOG_ERR,
+               MOD_CLAMAV_VERSION ": Cannot write termination byte to Clamd socket: %d", errno);
+    clam_errno = errno;
+    return -1;
+  }
+  if (write(sockd, "\n", 1) <= 0) {
+    pr_log_pri(PR_LOG_ERR,
+               MOD_CLAMAV_VERSION ": Cannot write terminating return. %d", errno);
+  }
+
+  /* interpret results */
+  return clamavd_result(sockd, abs_filename, rel_filename);
 }
 
 /**
@@ -326,7 +415,7 @@ static int clamavd_connect(void) {
 static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   char *abs_path = NULL, *rel_path = NULL;
   struct stat st;
-  int do_scan = FALSE;
+  int do_scan = FALSE, res;
   config_rec *c = NULL;
   unsigned long *minsize, *maxsize;
   const char *key = "mod_xfer.store-path";
@@ -449,7 +538,13 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
                MOD_CLAMAV_VERSION ": Going to virus scan absolute filename = '%s' with relative filename = '%s'.", abs_path, rel_path);
 
   clam_errno = 0;
-  if (clamavd_scan(clamd_sockd, abs_path, rel_path) > 0) {
+  c = find_config(CURRENT_CONF, CONF_PARAM, "ClamStream", FALSE);
+  if (c && *(int *)(c->argv[0])) {
+    res = clamavd_scan_stream(clamd_sockd, abs_path, rel_path);
+  } else {
+    res = clamavd_scan(clamd_sockd, abs_path, rel_path);
+  }
+  if (res > 0) {
     if (remove_on_failure) {
       pr_log_debug(DEBUG4,
                    MOD_CLAMAV_VERSION ": removing failed upload of filename = '%s' with relative filename = '%s'.", abs_path, rel_path);
@@ -539,6 +634,27 @@ static unsigned long parse_nbytes(char *nbytes_str, char *units_str) {
  * Configuration setter: ClamAV
  */
 MODRET set_clamav(cmd_rec *cmd) {
+  int bool = -1;
+  config_rec *c = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_LIMIT|CONF_VIRTUAL|CONF_GLOBAL|CONF_DIR);
+
+  if ((bool = get_boolean(cmd,1)) == -1)
+    CONF_ERROR(cmd, "expected Boolean parameter");
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+  *((unsigned char *) c->argv[0]) = bool;
+  c->flags |= CF_MERGEDOWN;
+
+  return PR_HANDLED(cmd);
+}
+
+/**
+ * Configuration setter: ClamStream
+ */
+MODRET set_clamstream(cmd_rec *cmd) {
   int bool = -1;
   config_rec *c = NULL;
 
@@ -723,6 +839,7 @@ static conftable clamav_conftab[] = {
   { "ClamPort", set_clamavd_port, NULL },
   { "ClamMinSize", set_clamavd_minsize, NULL },
   { "ClamMaxSize", set_clamavd_maxsize, NULL },
+  { "ClamStream", set_clamstream, NULL },
   { NULL }
 };
 
