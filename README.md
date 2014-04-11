@@ -17,6 +17,7 @@ questions, concerns, or suggesstions regarding this module.
 * ClamAV
 * ClamServer
 * ClamPort
+* ClamStream
 * ClamMinSize
 * ClamMaxSize
  
@@ -44,6 +45,9 @@ The ClamServer directive will configure the hostname/IP address used
 to connect to the Clamd daemon process. If no ClamServer directive is
 configured, then the module will do no TCP Clamd scanning.
 
+Please see the ClamStream directive if using a different host for
+Clamd than the ProFTPd server.
+
 * ClamPort
  * syntax: <ClamPort integer>
  * default: 3310
@@ -54,6 +58,19 @@ configured, then the module will do no TCP Clamd scanning.
 The ClamPort directive will configure the TCP port used to connect to
 the Clamd daemon process. If no ClamPort directive is configured,
 then the module will use the Clamd default TCP port of 3310.
+
+* ClamStream
+ * syntax: <ClamStream boolean>
+ * default: off
+ * context: server config, <virtualhost>, <global>, <directory>
+ * module: mod_clamav
+ * compatibility: 0.13rc3
+
+The ClamStream directive will enable the streaming of the uploaded
+file contents to the Clamd server using the INSTREAM protocol. This
+directive should be used when the Clamd server is on a different
+host than the ProFTPd server. If no ClamStream directive is
+configured, then the module will use the SCAN Clamd protocol.
  
 * ClamMinSize
  * syntax: <ClamMinSize integer [units]>
