@@ -548,7 +548,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     if (remove_on_failure) {
       pr_log_debug(DEBUG4,
                    MOD_CLAMAV_VERSION ": removing failed upload of filename = '%s' with relative filename = '%s'.", abs_path, rel_path);
-      if (pr_fsio_unlink(rel_path)!=0) {
+      if (clam_errno && pr_fsio_unlink(rel_path)!=0) {
         pr_log_pri(PR_LOG_ERR,
                    MOD_CLAMAV_VERSION ": notice    : unlink() failed (%d): %s",
                    errno, strerror(errno));
