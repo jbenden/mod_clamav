@@ -482,7 +482,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": vwd=%s fh_path=%s chroot=%s cwd=%s buf=%s",
                pr_fs_getvwd(), abs_path, session.chroot_path, pr_fs_getcwd(),
                buf);
-    if (buf && strcmp(buf, pr_fs_getcwd()) != 0) {
+    if (strcmp(buf, pr_fs_getcwd()) != 0) {
       if (strcmp(pr_fs_getcwd(), "/") != 0) {
         char *pos = strstr(buf, pr_fs_getcwd());
         if (pos) {
@@ -494,7 +494,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
       }
 
       abs_path = pdircat(fh->fh_pool, buf, abs_path, NULL);
-    } else if (buf && strcmp(buf, pr_fs_getcwd()) == 0 && session.chroot_path)
+    } else if (strcmp(buf, pr_fs_getcwd()) == 0 && session.chroot_path)
       abs_path = pdircat(fh->fh_pool, session.chroot_path, abs_path, NULL);
   }
   rel_path = pstrdup(fh->fh_pool, fh->fh_path);
