@@ -420,7 +420,6 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   int do_scan = FALSE, res;
   config_rec *c = NULL;
   unsigned long *minsize, *maxsize;
-  const char *key = "mod_xfer.store-path";
 
   /* We're only interested in STOR, APPE, and maybe STOU commands. */
   if (session.curr_cmd) {
@@ -483,7 +482,6 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": vwd=%s fh_path=%s chroot=%s cwd=%s buf=%s",
                pr_fs_getvwd(), abs_path, session.chroot_path, pr_fs_getcwd(),
                buf);
-    const char *chroot_path = session.chroot_path;
     if (buf && strcmp(buf, pr_fs_getcwd()) != 0) {
       if (strcmp(pr_fs_getcwd(), "/") != 0) {
         char *pos = strstr(buf, pr_fs_getcwd());
