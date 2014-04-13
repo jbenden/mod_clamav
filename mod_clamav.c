@@ -231,6 +231,7 @@ static int clamavd_scan_stream(int sockd, const char *abs_filename,
       pr_log_pri(PR_LOG_ERR,
                  MOD_CLAMAV_VERSION ": Cannot write byte count to Clamd socket: %d", errno);
       clam_errno = errno;
+      fclose(fd);
       free(buf);
       return -1;
     }
