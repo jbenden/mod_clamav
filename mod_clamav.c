@@ -30,6 +30,7 @@
 #include "conf.h"
 #include "privs.h"
 #include <libgen.h>
+#include <sys/types.h>
 #include "mod_clamav.h"
 
 /**
@@ -180,7 +181,7 @@ static int clamavd_connect_check(int sockd) {
  */
 static int clamavd_scan_stream(int sockd, const char *abs_filename,
                                const char *rel_filename) {
-  unsigned int len = 0;
+  u_int32_t len = 0;
   char *buf;
   size_t bufsz = 4096;
   long res;
