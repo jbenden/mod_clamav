@@ -9,7 +9,7 @@ Additional information may be found at the following URL:
 
 ## Author
 
-Please contact Joseph Benden <joe at thrallingpenguin.com> with any
+Please contact Joseph Benden (joe at thrallingpenguin.com) with any
 questions, concerns, or suggesstions regarding this module.
 
 ## Directives
@@ -24,7 +24,7 @@ questions, concerns, or suggesstions regarding this module.
 ----
 
 * ClamAV
- * syntax: <ClamAV on>
+ * syntax: ClamAV on
  * default: none
  * context: all
  * module: mod_clamav
@@ -35,9 +35,9 @@ and virus removal features are active. If no ClamAV directive is
 configured, then the module will do no virus scanning.
 
 * ClamServer
- * syntax: <ClamServer hostname/ip>
+ * syntax: ClamServer hostname/ip
  * default: none
- * context: server config, <virtualhost>, <global>, <directory>
+ * context: server config,virtualhost,global,directory
  * module: mod_clamav
  * compatibility: 0.6 of mod_clamav
 
@@ -49,9 +49,9 @@ Please see the ClamStream directive if using a different host for
 Clamd than the ProFTPd server.
 
 * ClamPort
- * syntax: <ClamPort integer>
+ * syntax: ClamPort integer
  * default: 3310
- * context: server config, <virtualhost>, <global>, <directory>
+ * context: server config,virtualhost,global,directory
  * module: mod_clamav
  * compatibility: 0.6 of mod_clamav
 
@@ -60,9 +60,9 @@ the Clamd daemon process. If no ClamPort directive is configured,
 then the module will use the Clamd default TCP port of 3310.
 
 * ClamStream
- * syntax: <ClamStream boolean>
+ * syntax: ClamStream boolean
  * default: off
- * context: server config, <virtualhost>, <global>, <directory>
+ * context: server config,virtualhost,global,directory
  * module: mod_clamav
  * compatibility: 0.13rc3
 
@@ -73,9 +73,9 @@ host than the ProFTPd server. If no ClamStream directive is
 configured, then the module will use the SCAN Clamd protocol.
  
 * ClamMinSize
- * syntax: <ClamMinSize integer [units]>
+ * syntax: ClamMinSize integer [units]
  * default: 0
- * context: server config, <virtualhost>, <global>, <directory>
+ * context: server config,virtualhost,global,directory
  * module: mod_clamav
  * compatibility: 0.10 of mod_clamav
 
@@ -91,9 +91,9 @@ by the appropriate factor. A value of zero (0) disables this
 directive.
  
 * ClamMaxSize
- * syntax: <ClamMaxSize integer [units]>
+ * syntax: ClamMaxSize integer [units]
  * default: 0
- * context: server config, <virtualhost>, <global>, <directory>
+ * context: server config,virtualhost,global,directory
  * module: mod_clamav
  * compatibility: 0.10 of mod_clamav
 
@@ -138,7 +138,8 @@ tool to add mod_clamav, as a DSO module, to your existing serverL
 Tip: Enable HiddenStore for virus scanning to take place in the background.
 
     <IfModule mod_clamav.c>
-      ClamAV on
-      ClamServer localhost
-      ClamPort 3310
+       ClamAV on
+       ClamServer localhost
+       ClamPort 3310
     </IfModule>
+
