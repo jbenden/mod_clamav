@@ -15,6 +15,7 @@ questions, concerns, or suggesstions regarding this module.
 ## Directives
 
 * ClamAV
+* ClamFailsafe
 * ClamServer
 * ClamPort
 * ClamStream
@@ -33,6 +34,18 @@ questions, concerns, or suggesstions regarding this module.
 The ClamAV directive will configure if the Mod_Clamav's virus scanning
 and virus removal features are active. If no ClamAV directive is
 configured, then the module will do no virus scanning.
+
+* ClamFailsafe
+ * syntax: ClamFailsafe boolean
+ * default: false
+ * context: all
+ * module: mod_clamav
+ * compatibility: 0.13rc2
+
+The ClamFailsafe directive will configure if Mod_Clamav's inability to
+scan a file, for any reason, will cause the failure of the file to
+upload. If no ClamFailsafe directive is configured, then the module
+will accept files that may not have been completely scanned by Clamd.
 
 * ClamServer
  * syntax: ClamServer hostname/ip
