@@ -544,7 +544,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   } else {
     res = clamavd_scan(clamd_sockd, abs_path, rel_path);
   }
-  if (res > 0) {
+  if (res < 0) {
     if (remove_on_failure) {
       pr_log_debug(DEBUG4,
                    MOD_CLAMAV_VERSION ": removing failed upload of filename = '%s' with relative filename = '%s'.", abs_path, rel_path);
