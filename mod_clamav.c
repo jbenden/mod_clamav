@@ -1,6 +1,6 @@
 /*
  * mod_clamav - ClamAV virus scanning module for ProFTPD
- * Copyright (c) 2005-2014, Joseph Benden <joe@thrallingpenguin.com>
+ * Copyright (c) 2005-2016, Joseph Benden <joe@thrallingpenguin.com>
  * Copyright (c) 2012-2013, TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
