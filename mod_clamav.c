@@ -113,9 +113,9 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
        * virus (only for FTP/FTPS connections.)
        */
       proto = pr_session_get_protocol(0);
-      if (strncmp(proto, "ftp", 4) == 0 ||
-          strncmp(proto, "ftps", 5) == 0) {
         pr_response_add_err(R_550, "Virus Detected and Removed: %s", pt);
+      if (strncmp(proto, "ftp", 3) == 0 ||
+          strncmp(proto, "ftps", 4) == 0) {
       }
 
       /* Log the fact */
