@@ -36,7 +36,7 @@
 /**
  * Module version and declaration
  */
-#define MOD_CLAMAV_VERSION "mod_clamav/0.14rc1"
+#define MOD_CLAMAV_VERSION "mod_clamav/0.14rc2"
 module clamav_module;
 
 /**
