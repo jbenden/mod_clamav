@@ -156,3 +156,68 @@ Tip: Enable HiddenStore for virus scanning to take place in the background.
        ClamPort 3310
     </IfModule>
 
+## Running the unit-tests
+
+It is important to run the unit-tests when contributing enhancements
+or bug fixes to `mod_clamav`. In this section, we will cover all
+important dependencies to run the basic unit-tests of both the
+`mod_clamav` module and general ProFTPD specific tests.
+
+Please be certain to include one or more working unit-tests with
+your patch or merge request, for `mod_clamav`. Doing so will
+dramatically improve the time-to-accept your patch or merge
+request.
+
+### Prerequisites
+
+#### Dependencies
+
+* Perl (a complete working Perl environment), with the following
+  modules installed and working:
+** Getopt::Long
+** Test::Unit
+** Test::Harness
+* ProFTPD source tree.
+** `mod_clamav` module must be present in source tree.
+** Ensure source tree compiles completely before attempting to run
+   unit-tests.
+* ClamAV scanner daemon (called: Clamd)
+** Must NOT be running whilst unit-testing
+** Local system TCP ports for both ClamAV scanner and ProFTPD must
+   successfully allocate and not be firewalled. If you run in to
+   connection error issues whilst testing, this may be the cause
+   for the unit-tests to fail.
+
+#### Patching the **ProFTPD** unit-test framework
+
+    $ cd /path/to/proftpd/source
+    $ patch -p0 < /path/to/mod_clamav/source/001-add-mod_clamav-to-tests.patch
+
+### Running ProFTPD Unit-Tests
+
+#### `mod_clamav` specific unit-tests
+
+    $ cd /path/to/proftpd/source
+    $ cd tests
+
+Then run one of the following commands. The first one will output
+simple information to quickly determine if any of the tests fail;
+where as the second one outputs verbose debugging information.
+
+    $ sudo perl t/modules/mod_clamav.t
+
+**OR**
+
+    $ sudo env TEST_VERBOSE=1 perl t/modules/mod_clamav.t
+
+#### ProFTPD module specific unit-tests
+
+    $ cd /path/to/proftpd/source
+    $ cd tests
+    $ sudo perl tests.pl --file-pattern '^t\/modules\/'
+
+#### All ProFTPD unit-tests
+
+    $ cd /path/to/proftpd/source
+    $ make check
+

@@ -52,8 +52,144 @@ sub new {
   return shift()->SUPER::new(@_);
 }
 
+sub set_up {
+  my $self = shift;
+  $self->SUPER::set_up(@_);
+
+  my $pid_file = "/tmp/clamd.pid";
+  my $config_file = File::Spec->rel2abs("t/etc/modules/mod_clamav/clamav-scanner.conf");
+
+  if (-e $pid_file) {
+    my $pid;
+    if (open(my $fh, "< $pid_file")) {
+      $pid = <$fh>;
+      chomp($pid);
+      close($fh);
+    }
+
+    my $cmd = "kill -TERM $pid 2> /dev/null";
+
+    my @output = `$cmd`;
+
+    my $now = time();
+    while ((time() - $now) < 240 && -e $pid_file) {
+      select(undef, undef, undef, 1.0);
+
+      @output = `$cmd`;
+    }
+  }
+
+  my $cmd = "/usr/sbin/clamd -c $config_file";
+
+  unless ($ENV{TEST_VERBOSE}) {
+    $cmd .= " >/dev/null 2>&1";
+  }
+
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "Starting ClamAV scanner: $cmd\n";
+  }
+
+  my @output = `$cmd`;
+
+  if ($ENV{TEST_VERBOSE}) {
+    foreach my $o (@output) {
+      print STDERR "$o\n";
+    }
+  }
+
+  my $now = time();
+  while ((time() - $now) < 240 && ! -e $pid_file) {
+    select(undef, undef, undef, 1.0);
+
+    if ($ENV{TEST_VERBOSE}) {
+      print STDERR "Waiting for PID file to exist.\n";
+    }
+  }
+
+  my $pid;
+  if (open(my $fh, "< $pid_file")) {
+    $pid = <$fh>;
+    chomp($pid);
+    close($fh);
+  }
+
+  $cmd = "kill -0 $pid";
+
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "Testing server: $cmd\n";
+  } else {
+    $cmd .= " 2>/dev/null";
+  }
+
+  @output = `$cmd`;
+  if ($? != 0) {
+    foreach my $o (@output) {
+      print STDERR "$o\n";
+    }
+    # die("ClamAV scanner is not responding.");
+  }
+}
+
+sub tear_down {
+  my $self = shift;
+  $self->SUPER::tear_down(@_);
+
+  my $pid_file = "/tmp/clamd.pid";
+
+  my $pid;
+  if (open(my $fh, "< $pid_file")) {
+    $pid = <$fh>;
+    chomp($pid);
+    close($fh);
+  }
+
+  my $cmd = "kill -TERM $pid";
+
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "Stopping ClamAV scanner: $cmd\n";
+  }
+
+  my @output = `$cmd`;
+
+  if ($ENV{TEST_VERBOSE}) {
+    foreach my $o (@output) {
+      print STDERR "$o\n";
+    }
+  }
+
+  my $now = time();
+
+  while ((time() - $now) < 120 && -e $pid_file) {
+    select(undef, undef, undef, 1.0);
+
+    @output = `$cmd 2> /dev/null`;
+  }
+
+  if (-e $pid_file) {
+    die("Could not stop clamav scanner!");
+  }
+}
+
 sub list_tests {
   return testsuite_get_runnable_tests($TESTS);
+}
+
+sub get_server_version {
+  my $proftpd_bin = ProFTPD::TestSuite::Utils::get_proftpd_bin();
+
+  my @res = `$proftpd_bin -v`;
+  if ($? != 0) {
+    return undef;
+  }
+
+  my $res = $res[0];
+  chomp($res);
+
+  if ($res =~ /^ProFTPD Version ([0-9]+)\.([0-9]+)\.([0-9]+)[a-z]?$/) {
+    return ($1, $2, $3);
+  }
+
+  return undef;
 }
 
 sub clamav_upload_file_ok {
@@ -93,7 +229,7 @@ sub clamav_upload_file_ok {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   # my $clamd_port = $ENV{CLAMD_PORT};
-  my $clamd_port = 8899;
+  my $clamd_port = 3310;
 
   my $test_file = File::Spec->rel2abs("$tmpdir/test.dat");
 
@@ -101,9 +237,13 @@ sub clamav_upload_file_ok {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 clamav:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+
+    MaxLoginAttempts => 2,
 
     DefaultRoot => "~",
 
@@ -112,6 +252,7 @@ sub clamav_upload_file_ok {
         ClamAV => 'on',
         ClamServer => '127.0.0.1',
         ClamPort => $clamd_port,
+        ClamFailsafe => 'on',
       },
 
       'mod_delay.c' => {
@@ -138,6 +279,7 @@ sub clamav_upload_file_ok {
   if ($pid) {
     eval {
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+
       $client->login($user, $passwd);
 
       my $conn = $client->stor_raw('test.dat');
@@ -238,7 +380,7 @@ sub clamav_upload_eicar_fails {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   # my $clamd_port = $ENV{CLAMD_PORT};
-  my $clamd_port = 8899;
+  my $clamd_port = 3310;
 
   my $eicar_file = File::Spec->rel2abs('t/etc/modules/mod_clamav/eicar.dat');
   my $eicar_data;
@@ -257,6 +399,8 @@ sub clamav_upload_eicar_fails {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 clamav:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -316,7 +460,7 @@ sub clamav_upload_eicar_fails {
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "test.dat: Operation not permitted";
+      $expected = "Virus Detected and Removed: Eicar-Test-Signature";
 
       my $resp_msg = $resp_msgs->[$resp_nmsgs-1];
       $self->assert($expected eq $resp_msg,
@@ -397,7 +541,7 @@ sub clamav_config_maxsize {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   # my $clamd_port = $ENV{CLAMD_PORT};
-  my $clamd_port = 8899;
+  my $clamd_port = 3310;
 
   my $eicar_file = File::Spec->rel2abs('t/etc/modules/mod_clamav/eicar.dat');
   my $eicar_data;
@@ -416,6 +560,8 @@ sub clamav_config_maxsize {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 clamav:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -474,7 +620,7 @@ sub clamav_config_maxsize {
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "test.dat: Operation not permitted";
+      $expected = "Virus Detected and Removed: Eicar-Test-Signature";
 
       my $resp_msg = $resp_msgs->[$resp_nmsgs-1];
       $self->assert($expected eq $resp_msg,
@@ -555,7 +701,7 @@ sub clamav_vroot {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   # my $clamd_port = $ENV{CLAMD_PORT};
-  my $clamd_port = 8899;
+  my $clamd_port = 3310;
 
   my $eicar_file = File::Spec->rel2abs('t/etc/modules/mod_clamav/eicar.dat');
   my $eicar_data;
@@ -574,6 +720,8 @@ sub clamav_vroot {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 clamav:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -637,7 +785,7 @@ sub clamav_vroot {
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "test.dat: Operation not permitted";
+      $expected = "Virus Detected and Removed: Eicar-Test-Signature";
 
       my $resp_msg = $resp_msgs->[$resp_nmsgs-1];
       $self->assert($expected eq $resp_msg,
@@ -718,7 +866,7 @@ sub clamav_vroot_homedir {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   # my $clamd_port = $ENV{CLAMD_PORT};
-  my $clamd_port = 8899;
+  my $clamd_port = 3310;
 
   my $eicar_file = File::Spec->rel2abs('t/etc/modules/mod_clamav/eicar.dat');
   my $eicar_data;
@@ -737,6 +885,8 @@ sub clamav_vroot_homedir {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 clamav:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -800,7 +950,7 @@ sub clamav_vroot_homedir {
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "test.dat: Operation not permitted";
+      $expected = "Virus Detected and Removed: Eicar-Test-Signature";
 
       my $resp_msg = $resp_msgs->[$resp_nmsgs-1];
       $self->assert($expected eq $resp_msg,
@@ -881,7 +1031,7 @@ sub clamav_stream {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   # my $clamd_port = $ENV{CLAMD_PORT};
-  my $clamd_port = 8899;
+  my $clamd_port = 3310;
 
   my $eicar_file = File::Spec->rel2abs('t/etc/modules/mod_clamav/eicar.dat');
   my $eicar_data;
@@ -900,6 +1050,8 @@ sub clamav_stream {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 clamav:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -959,7 +1111,7 @@ sub clamav_stream {
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "test.dat: Operation not permitted";
+      $expected = "Virus Detected and Removed: Eicar-Test-Signature";
 
       my $resp_msg = $resp_msgs->[$resp_nmsgs-1];
       $self->assert($expected eq $resp_msg,

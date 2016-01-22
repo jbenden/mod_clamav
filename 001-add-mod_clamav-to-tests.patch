@@ -1,0 +1,14 @@
+--- tests/tests.pl.orig	2016-01-21 09:22:20.973949254 -0700
++++ tests/tests.pl	2016-01-21 09:24:31.160208568 -0700
+@@ -238,6 +238,11 @@
+       test_class => [qw(mod_copy)],
+     },
+ 
++    't/modules/mod_clamav.t' => {
++      order => ++$order,
++      test_class => [qw(mod_clamav)],
++    },
++
+     't/modules/mod_ctrls.t' => {
+       order => ++$order,
+       test_class => [qw(mod_ctrls)],
