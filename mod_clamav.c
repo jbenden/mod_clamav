@@ -67,6 +67,8 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
   char buff[4096], *pt, *pt1;
   FILE *fd = 0;
 
+  (void) pr_trace_msg("clamav", 1, "clamavd_result (sockd %d, abs_filename '%s', rel_filename '%s')", sockd, abs_filename, rel_filename);
+
   if ((fd=fdopen(dup(sockd), "r")) == NULL) {
     pr_log_pri(PR_LOG_ERR,
                MOD_CLAMAV_VERSION ": error: Cant open descriptor for reading: %d",
@@ -123,8 +125,21 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
                  MOD_CLAMAV_VERSION ": Virus '%s' found in '%s'", pt, abs_filename);
     } else if (strstr(buff, "ERROR\n") != NULL ||
                strstr(buff, "UNKNOWN COMMAND") != NULL) {
-      pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": Clamd Error: %s", buff);
+      char *err = buff, *errend;
+
+      errend = strstr(err, " ERROR");
+      if (errend) {
+        *errend = 0;
+      }
+      errend = strstr(err, " UNKNOWN COMMAND");
+      if (errend) {
+        *errend = 0;
+      }
+
+      pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": Clamd Error: %s", err);
       waserror = 1;
+
+      pr_trace_msg("clamav", 1, "Clamd scanner was not able to function; please check that Clamd is functioning before filing a bug report.");
     }
   }
   fclose(fd);
@@ -137,6 +152,9 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
 static int clamavd_connect_check(int sockd) {
   FILE *fd = NULL;
   char buff[32];
+
+  (void) pr_trace_msg("clamav", 6, "clamavd_connect_check (sockd %d)",
+                      sockd);
 
   if (sockd == -1)
     return 0;
@@ -279,6 +297,9 @@ static int clamavd_scan(int sockd, const char *abs_filename,
     return -1;
   }
 
+  (void) pr_trace_msg("clamav", 6, "abs_filename '%s' being scanned.",
+                      abs_filename);
+
   sprintf(scancmd, "SCAN %s\n", abs_filename);
 
   if (!clamavd_connect_check(sockd)) {
@@ -292,7 +313,9 @@ static int clamavd_scan(int sockd, const char *abs_filename,
       return -1;
     }
     sockd = clamd_sockd;
-    pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Successfully reconnected to Clamd.");
+
+    (void) pr_trace_msg("clamav", 4, "Successfully reconnected to the ClamAV scanner.");
+
     clam_errno = 0;
   }
 
@@ -340,10 +363,10 @@ static int clamavd_connect(void) {
       clamd_port = 3310;
     else
       clamd_port = *port;
-    pr_log_debug(DEBUG4,
-                 MOD_CLAMAV_VERSION ": Connecting to remote Clamd host '%s' on port %d", clamd_host, clamd_port);
+
+    (void) pr_trace_msg("clamav", 4, "Connecting to remote ClamAV scanner on host '%s' and port %d.", clamd_host, clamd_port);
   } else {
-    pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Connecting to local Clamd socket '%s'", clamd_host);
+    (void) pr_trace_msg("clamav", 4, "Connecting to local ClamAV scanner on unix socket '%s'.", clamd_host);
   }
 
   PRIVS_ROOT;
@@ -463,14 +486,20 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   }
 
   c = find_config(CURRENT_CONF, CONF_PARAM, "ClamAV", FALSE);
-  if (!c || !*(int *)(c->argv[0]))
+  if (!c || !*(int *)(c->argv[0])) {
+    (void) pr_trace_msg("clamav", 8, "skipping ClamAV virus scan.");
+
     return 0;
+  }
 
   c = find_config(CURRENT_CONF, CONF_PARAM, "ClamFailsafe", FALSE);
   if (!c || *(int *)(c->argv[0]))
     remove_on_failure = 1;
   else
     remove_on_failure = 0;
+
+  (void) pr_trace_msg("clamav", 8, "fail-safe mode is %s.",
+                      (remove_on_failure ? "ON" : "OFF"));
 
   /**
    * Figure out the absolute path of our directory.
@@ -479,18 +508,15 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   getcwd(buf, PR_TUNABLE_PATH_MAX);
   abs_path = fh->fh_path;
   if (abs_path) {
-    pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": vwd=%s fh_path=%s chroot=%s cwd=%s buf=%s",
-               pr_fs_getvwd(), abs_path, session.chroot_path, pr_fs_getcwd(),
-               buf);
+    (void) pr_trace_msg("clamav", 8, "vwd=%s fh_path=%s chroot=%s cwd=%s buf=%s",
+                        pr_fs_getvwd(), abs_path, session.chroot_path, pr_fs_getcwd(),
+                        buf);
     if (strcmp(buf, pr_fs_getcwd()) != 0) {
       if (strcmp(pr_fs_getcwd(), "/") != 0) {
         char *pos = strstr(buf, pr_fs_getcwd());
         if (pos) {
-          pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": pos=%s", pos);
           *pos = 0;
         }
-        pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": buf after strstr(): %s",
-                   buf);
       }
 
       abs_path = pdircat(fh->fh_pool, buf, abs_path, NULL);
@@ -499,7 +525,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   }
   rel_path = pstrdup(fh->fh_pool, fh->fh_path);
 
-  pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": absolute path is '%s', relative path is '%s'", abs_path, rel_path);
+  (void) pr_trace_msg("clamav", 6, "absolute path is '%s' and relative path is '%s'.", abs_path, rel_path);
 
   /**
    * Handle min/max settings
@@ -514,7 +540,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
   else
     clamd_maxsize = *maxsize;
 
-  pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": ClamMinSize=%" PR_LU " ClamMaxSize=%" PR_LU " Filesize=%" PR_LU, clamd_minsize, clamd_maxsize, (pr_off_t) st.st_size);
+  (void) pr_trace_msg("clamav", 6, "ClamMinSize=%" PR_LU " ClamMaxSize=%" PR_LU " Filesize=%" PR_LU, clamd_minsize, clamd_maxsize, (pr_off_t) st.st_size);
 
   if (clamd_minsize > 0) {
     /* test the minimum size */
@@ -534,8 +560,7 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     }
   }
 
-  pr_log_debug(DEBUG4,
-               MOD_CLAMAV_VERSION ": Going to virus scan absolute filename = '%s' with relative filename = '%s'.", abs_path, rel_path);
+  (void) pr_trace_msg("clamav", 1, "Going to virus scan absolute filename of '%s' and a relative filename of '%s'.", abs_path, rel_path);
 
   clam_errno = 0;
   c = find_config(CURRENT_CONF, CONF_PARAM, "ClamStream", FALSE);
