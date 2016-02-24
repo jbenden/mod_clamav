@@ -15,7 +15,7 @@ $| = 1;
 
 my $order = 0;
 
-my $TESTS = {
+my $TESTS_ROOT = {
   clamav_upload_file_ok => {
     order => ++$order,
     test_class => [qw(forking)],
@@ -25,7 +25,9 @@ my $TESTS = {
     order => ++$order,
     test_class => [qw(forking)],
   },
+};
 
+my $TESTS = {
   clamav_config_maxsize => {
     order => ++$order,
     test_class => [qw(bug forking)],
@@ -47,6 +49,11 @@ my $TESTS = {
   },
 
 };
+
+# If running as root, add the tests which require root privs.
+if ($< == 0) {
+  @$TESTS{keys($TESTS_ROOT)} = values($TESTS_ROOT);
+}
 
 sub new {
   return shift()->SUPER::new(@_);
@@ -212,6 +219,12 @@ sub clamav_upload_file_ok {
   my $uid = 500;
   my $gid = 500;
 
+  # Bail test if not running as root
+  if ($< > 0) {
+    print STDERR "Must be root for this test to succeed.\n";
+    return;
+  }
+
   # Make sure that, if we're running as root, that the home directory has
   # permissions/privs set for the account we create
   if ($< == 0) {
@@ -362,6 +375,12 @@ sub clamav_upload_eicar_fails {
   my $home_dir = File::Spec->rel2abs($tmpdir);
   my $uid = 500;
   my $gid = 500;
+
+  # Bail test if not running as root
+  if ($< > 0) {
+    print STDERR "Must be root for this test to succeed.\n";
+    return;
+  }
 
   # Make sure that, if we're running as root, that the home directory has
   # permissions/privs set for the account we create
