@@ -174,16 +174,16 @@ request.
 
 * Perl (a complete working Perl environment), with the following
   modules installed and working:
-** Getopt::Long
-** Test::Unit
-** Test::Harness
+ * Getopt::Long
+ * Test::Unit
+ * Test::Harness
 * ProFTPD source tree.
-** `mod_clamav` module must be present in source tree.
-** Ensure source tree compiles completely before attempting to run
+ * `mod_clamav` module must be present in source tree.
+ * Ensure source tree compiles completely before attempting to run
    unit-tests.
 * ClamAV scanner daemon (called: Clamd)
-** Must NOT be running whilst unit-testing
-** Local system TCP ports for both ClamAV scanner and ProFTPD must
+ * Must NOT be running whilst unit-testing
+ * Local system TCP ports for both ClamAV scanner and ProFTPD must
    successfully allocate and not be firewalled. If you run in to
    connection error issues whilst testing, this may be the cause
    for the unit-tests to fail.
