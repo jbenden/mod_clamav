@@ -174,9 +174,9 @@ request.
 
 * Perl (a complete working Perl environment), with the following
   modules installed and working:
- * Getopt::Long
- * Test::Unit
- * Test::Harness
+ * `Getopt::Long`
+ * `Test::Unit`
+ * `Test::Harness`
 * ProFTPD source tree.
  * `mod_clamav` module must be present in source tree.
  * Ensure source tree compiles completely before attempting to run
@@ -202,4 +202,4 @@ execute the following command instead:
 
 **NOTE**: The unit tests include some which depend on root. If you
 are interested in these specific unit tests, then execute the
-above commands using sudo or su.
+above commands using `sudo` or `su`.
