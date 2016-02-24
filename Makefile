@@ -21,6 +21,6 @@ build: $(PROFTPD_PREFIX)/configure copy
 	touch $@
 
 clean:
-	rm -f build copy
+	rm -f build copy tests.log
 
 .PHONY: clean all
