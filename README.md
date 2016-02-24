@@ -188,36 +188,18 @@ request.
    connection error issues whilst testing, this may be the cause
    for the unit-tests to fail.
 
-#### Patching the **ProFTPD** unit-test framework
+#### Running `mod_clamav` Unit-Tests
 
-    $ cd /path/to/proftpd/source
-    $ patch -p0 < /path/to/mod_clamav/source/001-add-mod_clamav-to-tests.patch
+To run the unit tests, execute the following command within
+`mod_clamav`'s source folder:
 
-### Running ProFTPD Unit-Tests
+    $ make tests
 
-#### `mod_clamav` specific unit-tests
+To display verbose debugging information with the unit tests,
+execute the following command instead:
 
-    $ cd /path/to/proftpd/source
-    $ cd tests
+    $ env TEST_VERBOSE=1 make tests
 
-Then run one of the following commands. The first one will output
-simple information to quickly determine if any of the tests fail;
-where as the second one outputs verbose debugging information.
-
-    $ sudo perl t/modules/mod_clamav.t
-
-**OR**
-
-    $ sudo env TEST_VERBOSE=1 perl t/modules/mod_clamav.t
-
-#### ProFTPD module specific unit-tests
-
-    $ cd /path/to/proftpd/source
-    $ cd tests
-    $ sudo perl tests.pl --file-pattern '^t\/modules\/'
-
-#### All ProFTPD unit-tests
-
-    $ cd /path/to/proftpd/source
-    $ make check
-
+**NOTE**: The unit tests include some which depend on root. If you
+are interested in these specific unit tests, then execute the
+above commands using sudo or su.
