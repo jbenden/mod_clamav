@@ -245,7 +245,7 @@ static int clamavd_scan_stream(int sockd, const char *abs_filename,
   /* send file contents using protocol defined by Clamd */
   while ((res = fread(buf, 1, bufsz, fd)) > 0) {
     len = htonl(res);
-    pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Streaming %ld bytes (%d, %u) to Clamd.", res, len, sizeof(len));
+    pr_log_debug(DEBUG4, MOD_CLAMAV_VERSION ": Streaming %" PR_LU " bytes (%d, %u) to Clamd.", res, len, sizeof(len));
     if (write(sockd, (void *) &len, sizeof(len)) <= 0) {
       pr_log_pri(PR_LOG_ERR,
                  MOD_CLAMAV_VERSION ": Cannot write byte count to Clamd socket: %d", errno);
