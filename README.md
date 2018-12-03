@@ -21,6 +21,7 @@ questions, concerns, or suggesstions regarding this module.
 * ClamStream
 * ClamMinSize
 * ClamMaxSize
+* ClamLocalSocket
  
 ----
 
@@ -46,6 +47,16 @@ The ClamFailsafe directive will configure if Mod_Clamav's inability to
 scan a file, for any reason, will cause the failure of the file to
 upload. If no ClamFailsafe directive is configured, then the module
 will accept files that may not have been completely scanned by Clamd.
+
+* ClamLocalSocket
+ * ClamLocalSocket /unix/socket/path/to/clam.sock
+ * default: none
+ * context: server config,virtualhost,global,directory
+ * module: mod_clamav
+ * compatibility: *FIXME* of mod_clamav
+ 
+The ClamLocalSocket directive, when configured, will instruct the mod_clamav
+module to connect to clamd via the specified unix domain socket.
 
 * ClamServer
  * syntax: ClamServer hostname/ip
