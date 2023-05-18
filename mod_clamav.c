@@ -117,7 +117,7 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
       proto = pr_session_get_protocol(0);
       if (strncmp(proto, "ftp", 3) == 0 ||
           strncmp(proto, "ftps", 4) == 0) {
-        pr_response_send(R_550, "Virus Detected and Removed: %s", pt);
+        pr_response_add_err(R_550, "Virus Detected and Removed: %s", pt);
       }
 
       /* Log the fact */
@@ -578,7 +578,10 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
                    MOD_CLAMAV_VERSION ": notice    : unlink() failed (%d): %s",
                    errno, strerror(errno));
       }
+      errno = EPERM;
+      return -1;
     }
+  } else if (res) {
     errno = EPERM;
     return -1;
   }
