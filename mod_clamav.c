@@ -80,6 +80,7 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
   // Try to read in a loop in case fgets gets interrupted
   do {
     errno = 0;
+    pr_signals_handle();
     fgets(buff, sizeof(buff) - 1, fd);
     fxerrno = errno;
   } while (fxerrno == EINTR);
