@@ -239,7 +239,7 @@ static int clamavd_scan_stream(int sockd, const char *abs_filename,
   buf = malloc(bufsz);
   if (!buf) {
     pr_log_pri(PR_LOG_CRIT, "Out of memory!");
-    end_login(1);
+    pr_session_end(1);
   }
 
   /* send file contents using protocol defined by Clamd */
