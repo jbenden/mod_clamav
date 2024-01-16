@@ -244,7 +244,7 @@ static int clamavd_scan_stream(int sockd, const char *abs_filename,
   buf = malloc(bufsz);
   if (!buf) {
     pr_log_pri(PR_LOG_CRIT, "Out of memory!");
-    end_login(1);
+    pr_session_end(1);
   }
 
   /* send file contents using protocol defined by Clamd */
@@ -583,7 +583,10 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
                    MOD_CLAMAV_VERSION ": notice    : unlink() failed (%d): %s",
                    errno, strerror(errno));
       }
+      errno = EPERM;
+      return -1;
     }
+  } else if (res) {
     errno = EPERM;
     return -1;
   }
