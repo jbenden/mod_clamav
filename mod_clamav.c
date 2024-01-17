@@ -77,70 +77,75 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
   }
 
   memset(buff, '\0', sizeof(buff));
-  if (fgets(buff, sizeof(buff) - 1, fd)) {
-    if (strstr(buff, "FOUND\n")) {
-      const char *proto;
+  // Try to read in a loop in case fgets gets interrupted
+  do {
+    errno = 0;
+    pr_signals_handle();
+    fgets(buff, sizeof(buff) - 1, fd);
+    fxerrno = errno;
+  } while (fxerrno == EINTR);
+  if (strstr(buff, "FOUND\n")) {
+    const char *proto;
 
-      ++infected;
+    ++infected;
 
-      pt = strrchr(buff, ':');
-      if (pt)
-        *pt = 0;
+    pt = strrchr(buff, ':');
+    if (pt)
+      *pt = 0;
 
-      /* Delete the infected upload */
-      /* TODO: delete only the hiddenstore file, not
-         the actual file.
-      */
-      if ((ret=pr_fsio_unlink(rel_filename))!=0) {
-        pr_log_pri(PR_LOG_ERR,
-                   MOD_CLAMAV_VERSION ": notice: unlink() failed (%d): %s",
-                   errno, strerror(errno));
-      }
-
-      /* clean up the response */
-      pt += 2;
-      pt1 = strstr(pt, " FOUND");
-      if (pt1) {
-        *pt1 = 0;
-      }
-
-      /* Generate a custom event for any listeners
-       * (e.g. mod_ban) which might be listening. Pass
-       * in the string containing the virus
-       * information.
-       */
-      pr_event_generate("mod_clamav.virus-found", pt);
-
-      /* Inform the client the file contained a
-       * virus (only for FTP/FTPS connections.)
-       */
-      proto = pr_session_get_protocol(0);
-      if (strncmp(proto, "ftp", 3) == 0 ||
-          strncmp(proto, "ftps", 4) == 0) {
-        pr_response_add_err(R_550, "Virus Detected and Removed: %s", pt);
-      }
-
-      /* Log the fact */
+    /* Delete the infected upload */
+    /* TODO: delete only the hiddenstore file, not
+       the actual file.
+    */
+    if ((ret=pr_fsio_unlink(rel_filename))!=0) {
       pr_log_pri(PR_LOG_ERR,
-                 MOD_CLAMAV_VERSION ": Virus '%s' found in '%s'", pt, abs_filename);
-    } else if (strstr(buff, "ERROR\n") != NULL ||
-               strstr(buff, "UNKNOWN COMMAND") != NULL) {
-      char *err = buff, *errend;
-
-      errend = strstr(err, " ERROR");
-      if (errend) {
-        *errend = 0;
-      }
-      errend = strstr(err, " UNKNOWN COMMAND");
-      if (errend) {
-        *errend = 0;
-      }
-
-      pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": Clamd Error: %s", err);
-      waserror = 1;
-
-      pr_trace_msg("clamav", 1, "Clamd scanner was not able to function; please check that Clamd is functioning before filing a bug report.");
+                 MOD_CLAMAV_VERSION ": notice: unlink() failed (%d): %s",
+                 errno, strerror(errno));
     }
+
+    /* clean up the response */
+    pt += 2;
+    pt1 = strstr(pt, " FOUND");
+    if (pt1) {
+      *pt1 = 0;
+    }
+
+    /* Generate a custom event for any listeners
+     * (e.g. mod_ban) which might be listening. Pass
+     * in the string containing the virus
+     * information.
+     */
+    pr_event_generate("mod_clamav.virus-found", pt);
+
+    /* Inform the client the file contained a
+     * virus (only for FTP/FTPS connections.)
+     */
+    proto = pr_session_get_protocol(0);
+    if (strncmp(proto, "ftp", 3) == 0 ||
+        strncmp(proto, "ftps", 4) == 0) {
+      pr_response_add_err(R_550, "Virus Detected and Removed: %s", pt);
+    }
+
+    /* Log the fact */
+    pr_log_pri(PR_LOG_ERR,
+               MOD_CLAMAV_VERSION ": Virus '%s' found in '%s'", pt, abs_filename);
+  } else if (strstr(buff, "ERROR\n") != NULL ||
+             strstr(buff, "UNKNOWN COMMAND") != NULL) {
+    char *err = buff, *errend;
+
+    errend = strstr(err, " ERROR");
+    if (errend) {
+      *errend = 0;
+    }
+    errend = strstr(err, " UNKNOWN COMMAND");
+    if (errend) {
+      *errend = 0;
+    }
+
+    pr_log_pri(PR_LOG_ERR, MOD_CLAMAV_VERSION ": Clamd Error: %s", err);
+    waserror = 1;
+
+    pr_trace_msg("clamav", 1, "Clamd scanner was not able to function; please check that Clamd is functioning before filing a bug report.");
   }
   fclose(fd);
   return infected ? infected : (waserror ? -1 : 0);
