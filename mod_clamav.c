@@ -63,7 +63,7 @@ static int clamavd_connect(void);
  * Read the returned information from Clamavd.
  */
 static int clamavd_result(int sockd, const char *abs_filename, const char *rel_filename) {
-  int infected = 0, waserror = 0, ret;
+  int infected = 0, waserror = 0, ret, fxerrno = 0;
   char buff[4096], *pt, *pt1;
   FILE *fd = 0;
 
