@@ -117,6 +117,12 @@ static int clamavd_result(int sockd, const char *abs_filename, const char *rel_f
      */
     pr_event_generate("mod_clamav.virus-found", pt);
 
+    if (pr_table_add(session.notes, "mod_clamav.virus-found",
+        pstrdup(session.pool, pt), 0) < 0) {
+      pr_trace_msg(trace_channel, 4,
+        "error adding 'mod_clamav.virus-found' note: %s", strerror(errno));
+    }
+
     /* Inform the client the file contained a
      * virus (only for FTP/FTPS connections.)
      */
@@ -864,6 +870,17 @@ static int clamav_sess_init(void) {
   return 0;
 }
 
+/**
+ * Remove the mod_clamav.virus-found note from the session.notes
+ */
+MODRET clamav_virus_found(cmd_rec *cmd) {
+
+  /* Delete the stashed virus name from the session.notes table. */
+  (void) pr_table_remove(session.notes, "mod_clamav.virus-found", NULL);
+
+  return PR_DECLINED(cmd);
+}
+
 static conftable clamav_conftab[] = {
   { "ClamAV", set_clamav, NULL },
   { "ClamFailsafe", set_clamfailsafe, NULL },
@@ -876,13 +893,20 @@ static conftable clamav_conftab[] = {
   { NULL }
 };
 
+static cmdtable clamav_cmdtab[] = {
+  { LOG_CMD_ERR, C_STOR, G_NONE, clamav_virus_found, FALSE, FALSE },
+  { LOG_CMD_ERR, C_APPE, G_NONE, clamav_virus_found, FALSE, FALSE },
+  { LOG_CMD_ERR, C_STOU, G_NONE, clamav_virus_found, FALSE, FALSE },
+  { 0, NULL }
+};
+
 module clamav_module = {
   NULL,              /* Always NULL */
   NULL,              /* Always NULL */
   0x20,              /* module api version */
   "clamav",          /* module name */
   clamav_conftab,    /* module configuration handler table */
-  NULL,              /* module command handler table */
+  clamav_cmdtab,     /* module command handler table */
   NULL,              /* module authentication handler table */
   NULL,              /* module initialization */
   clamav_sess_init,  /* session initialization */
