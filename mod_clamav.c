@@ -516,11 +516,13 @@ static int clamav_fsio_close(pr_fh_t *fh, int fd) {
     (void) pr_trace_msg("clamav", 8, "vwd=%s fh_path=%s chroot=%s cwd=%s buf=%s",
                         pr_fs_getvwd(), abs_path, session.chroot_path, pr_fs_getcwd(),
                         buf);
-    if (strcmp(buf, pr_fs_getcwd()) != 0) {
-      if (strcmp(pr_fs_getcwd(), "/") != 0) {
-        char *pos = strstr(buf, pr_fs_getcwd());
-        if (pos) {
-          *pos = 0;
+    if (session.chroot_path && strcmp(session.chroot_path, "/") != 0) {
+      if (strcmp(buf, pr_fs_getcwd()) != 0) {
+        if (strcmp(pr_fs_getcwd(), "/") != 0) {
+          char *pos = strstr(buf, pr_fs_getcwd());
+          if (pos) {
+            *pos = 0;
+          }
         }
       }
 
